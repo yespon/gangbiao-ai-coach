@@ -1,7 +1,7 @@
 import { ChatResponse, SessionResponse, SessionSummary, StreamEvent } from "@/types/chat";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:2088";
+// Default to same-origin API routes to avoid CORS/preflight issues in Docker or LAN access.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
 
 function endpoint(path: string): string {
   return `${API_BASE}${path}`;

@@ -30,7 +30,7 @@ uv run python main.py
 
 3. 后端地址
 
-- API: `http://127.0.0.1:2088`
+- API: `http://127.0.0.1:2024`
 - 根路径会返回服务状态 JSON（不再托管静态页面）。
 
 4. 启动前端（Next.js）
@@ -50,9 +50,9 @@ npm run dev
 
 生产部署采用三容器架构：
 
-1. `backend`：FastAPI 服务（端口 `2088`，仅内网）。
+1. `backend`：FastAPI 服务（端口 `2024`，仅内网）。
 2. `frontend`：Next.js 服务（端口 `3000`，仅内网）。
-3. `nginx`：统一入口（对外 `80`），转发 `/api/*` 到后端，其余路径到前端。
+3. `nginx`：统一入口（对外 `2088`），转发 `/api/*` 到后端，其余路径到前端。
 
 部署步骤：
 
@@ -70,8 +70,8 @@ docker compose ps
 验证：
 
 ```bash
-curl -sS http://127.0.0.1/api/health
-curl -sS http://127.0.0.1/
+curl -sS http://127.0.0.1:2088/api/health
+curl -sS http://127.0.0.1:2088/
 ```
 
 停止：

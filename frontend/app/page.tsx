@@ -122,12 +122,19 @@ export default function HomePage() {
     }
   }
 
+  async function ensureSessionId(): Promise<string> {
+    if (sessionId) {
+      return sessionId;
+    }
+    const created = await createSession(showContextInHistory);
+    setSessionId(created.session_id);
+    setHistory(created.history || []);
+    await refreshSessions();
+    return created.session_id;
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!sessionId) {
-      setError("请先创建或选择会话。");
-      return;
-    }
     if (!message.trim() && files.length === 0) {
       return;
     }
@@ -136,6 +143,7 @@ export default function HomePage() {
       setBusy(true);
       setError("");
       setStreamingDraft("");
+      const activeSessionId = await ensureSessionId();
 
       // If files attached and message is provided, add a system message immediately
       if (files.length > 0 && message.trim().length > 0) {
@@ -152,10 +160,10 @@ export default function HomePage() {
       }
 
       if (!streamMode) {
-        const response = await sendChat(sessionId, message.trim(), files);
+        const response = await sendChat(activeSessionId, message.trim(), files);
         setHistory(response.history || []);
       } else {
-        await streamChat(sessionId, message.trim(), files, (evt) => {
+        await streamChat(activeSessionId, message.trim(), files, (evt) => {
           if (evt.type === "delta") {
             setStreamingDraft((prev) => prev + evt.delta);
           } else if (evt.type === "done") {

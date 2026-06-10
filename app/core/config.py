@@ -46,3 +46,11 @@ def get_cors_allow_origins() -> list[str]:
     if not raw:
         return ["*"]
     return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def get_cors_allow_origin_regex() -> str | None:
+    raw = os.getenv("CORS_ALLOW_ORIGIN_REGEX", "").strip()
+    if raw:
+        return raw
+    # Default to common private-network/browser localhost origins.
+    return r"^https?://(localhost|127\.0\.0\.1|10\.(?:\d{1,3}\.){2}\d{1,3}|192\.168\.(?:\d{1,3})\.(?:\d{1,3})|172\.(?:1[6-9]|2\d|3[0-1])\.(?:\d{1,3})\.(?:\d{1,3}))(?::\d+)?$"
