@@ -62,7 +62,7 @@ async def test_append_user_message_includes_attachment_hints_and_logs():
 
     assert user_msg.role == "user"
     assert "问题" in user_msg.content
-    assert "附件: a.txt" in user_msg.content
+    # file_hints are only logged, not appended to message content
     assert user_msg.attachments == [{"filename": "a.txt"}]
     assert session.messages[-1] is user_msg
     assert logger.events

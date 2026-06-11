@@ -44,6 +44,8 @@ def _log_llm_payload_debug(logger, llm_messages: list[dict[str, str]], user_msg:
     if llm_messages and llm_messages[-1].get("role") == "user":
         final_user_content = llm_messages[-1].get("content") or ""
 
+    dropped = llm_messages[0].pop("_dropped_context_turns", "0") if llm_messages else "0"
+
     attachment_stats: list[dict[str, Any]] = []
     for att in user_msg.attachments:
         excerpt = att.get("excerpt") or ""
@@ -56,10 +58,11 @@ def _log_llm_payload_debug(logger, llm_messages: list[dict[str, str]], user_msg:
         )
 
     logger.info(
-        "llm_payload_debug messages={} total_chars={} final_user_chars={} attachment_stats={} user_head='{}' user_tail='{}'",
+        "llm_payload_debug messages={} total_chars={} final_user_chars={} dropped_context_turns={} attachment_stats={} user_head='{}' user_tail='{}'",
         len(llm_messages),
         total_chars,
         len(final_user_content),
+        dropped,
         json.dumps(attachment_stats, ensure_ascii=False),
         _sanitize_preview(final_user_content, _LLM_PAYLOAD_PREVIEW_CHARS),
         _sanitize_preview(final_user_content[-_LLM_PAYLOAD_PREVIEW_CHARS:], _LLM_PAYLOAD_PREVIEW_CHARS),
