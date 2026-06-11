@@ -1,4 +1,5 @@
 import uuid
+import os
 from pathlib import Path
 from typing import Any
 
@@ -9,24 +10,46 @@ from app.extractors.document import _extract_doc_text, _extract_docx_text, _extr
 from app.extractors.spreadsheet import _extract_xls_text, _extract_xlsx_text
 
 
+def _int_env(name: str, default: int, minimum: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(value, minimum)
+
+
+def _clip_text(text: str, limit: int) -> str:
+    # limit <= 0 means "no clipping" for sending full attachment text.
+    if limit <= 0:
+        return text
+    return text[:limit]
+
+
+ATTACHMENT_EXCERPT_CHARS = _int_env("ATTACHMENT_EXCERPT_CHARS", 0, 0)
+ATTACHMENT_HINT_CHARS = _int_env("ATTACHMENT_HINT_CHARS", 800, 120)
+
+
 def _extract_attachment_excerpt(raw_bytes: bytes, lower_name: str) -> str:
     if lower_name.endswith((".txt", ".md", ".json", ".csv")):
-        return raw_bytes[:4000].decode("utf-8", errors="ignore")
+        return raw_bytes.decode("utf-8", errors="ignore")
 
     if lower_name.endswith(".docx"):
-        return _extract_docx_text(raw_bytes)[:4000]
+        return _extract_docx_text(raw_bytes)
 
     if lower_name.endswith(".doc"):
-        return _extract_doc_text(raw_bytes)[:4000]
+        return _extract_doc_text(raw_bytes)
 
     if lower_name.endswith(".pdf"):
-        return _extract_pdf_text(raw_bytes)[:4000]
+        return _extract_pdf_text(raw_bytes)
 
     if lower_name.endswith(".xlsx"):
-        return _extract_xlsx_text(raw_bytes)[:4000]
+        return _extract_xlsx_text(raw_bytes)
 
     if lower_name.endswith(".xls"):
-        return _extract_xls_text(raw_bytes)[:4000]
+        return _extract_xls_text(raw_bytes)
 
     return ""
 
@@ -60,13 +83,13 @@ async def _save_attachments(
             "content_type": f.content_type,
             "size": len(raw_bytes),
             "saved_path": str(target.relative_to(BASE_DIR)),
-            "excerpt": excerpt[:800],
+            "excerpt": _clip_text(excerpt, ATTACHMENT_EXCERPT_CHARS),
         }
         saved_meta.append(meta)
 
         hint = f"附件: {safe_name} ({len(raw_bytes)} bytes)"
         if excerpt:
-            hint += f"\n可读摘要:\n{excerpt[:500]}"
+            hint += f"\n可读摘要:\n{excerpt[:ATTACHMENT_HINT_CHARS]}"
         else:
             hint += "\n未提取到可读文本（建议使用 txt/md/json/csv/doc/docx/xls/xlsx/pdf，或粘贴关键内容）"
         attachment_hints.append(hint)

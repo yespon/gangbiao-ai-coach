@@ -113,6 +113,8 @@ uv run pytest -q
 - `MATERIALS_DIR`: 教材目录路径（支持相对项目根目录），如 `materials`。
 - `MATERIALS_MAX_FILES`: 每次会话最多注入材料数，默认 `20`。
 - `MATERIALS_MAX_EXCERPT_CHARS`: 每份材料注入的最大字符数，默认 `1200`。
+- `ATTACHMENT_EXCERPT_CHARS`: 单个用户附件写入会话元数据的长度；`0` 表示不截断（发送全文），默认 `0`。
+- `ATTACHMENT_HINT_CHARS`: 服务端日志提示中的附件摘要长度，默认 `800`。
 
 服务启动时会自动读取项目根目录的 `.env` 文件，例如：
 
@@ -125,4 +127,6 @@ MATERIALS_AUTOLOAD=true
 MATERIALS_DIR=materials
 MATERIALS_MAX_FILES=20
 MATERIALS_MAX_EXCERPT_CHARS=1200
+ATTACHMENT_EXCERPT_CHARS=0
+ATTACHMENT_HINT_CHARS=800
 ```

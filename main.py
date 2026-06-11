@@ -10,7 +10,7 @@ from app.services.session_service import SESSIONS
 setup_logging()
 
 
-app = FastAPI(title="Gangbiao Chatbot", version="0.1.1")
+app = FastAPI(title="Gangbiao Chatbot", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_allow_origins(),
@@ -32,7 +32,7 @@ async def index() -> dict[str, str]:
     return {
         "service": "gangbiao-chatbot-api",
         "status": "ok",
-        "version": "0.1.1",
+        "version": "0.1.0",
     }
 
 

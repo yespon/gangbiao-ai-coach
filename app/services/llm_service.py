@@ -22,6 +22,9 @@ def _build_model_messages(session: ChatSession, user_msg: ChatMessage) -> list[d
     for msg in session.messages:
         if msg.role not in {"system", "user", "assistant"}:
             continue
+        # Current user message is appended again below with attachment content.
+        if msg is user_msg:
+            continue
         messages.append({"role": msg.role, "content": msg.content})
 
     # Build user message with attachment content
