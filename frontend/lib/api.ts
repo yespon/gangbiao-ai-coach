@@ -7,10 +7,30 @@ function endpoint(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+/**
+ * Returns a stable per-browser user ID persisted in localStorage.
+ * When authentication is added, replace this with the real user ID from the
+ * auth token/session instead of reading from localStorage.
+ */
+export function getUserId(): string {
+  const KEY = "gb_user_id";
+  if (typeof window === "undefined") return "anonymous";
+  let uid = localStorage.getItem(KEY);
+  if (!uid) {
+    uid = crypto.randomUUID();
+    localStorage.setItem(KEY, uid);
+  }
+  return uid;
+}
+
+function userHeaders(): Record<string, string> {
+  return { "X-User-ID": getUserId() };
+}
+
 export async function createSession(showContextInHistory: boolean): Promise<SessionResponse> {
   const response = await fetch(endpoint("/api/v1/sessions"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...userHeaders() },
     body: JSON.stringify({ show_context_in_history: showContextInHistory }),
   });
   if (!response.ok) {
@@ -20,7 +40,10 @@ export async function createSession(showContextInHistory: boolean): Promise<Sess
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  const response = await fetch(endpoint("/api/v1/sessions"), { cache: "no-store" });
+  const response = await fetch(endpoint("/api/v1/sessions"), {
+    cache: "no-store",
+    headers: userHeaders(),
+  });
   if (!response.ok) {
     throw new Error(`List sessions failed: ${response.status}`);
   }
@@ -28,7 +51,10 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 export async function getSession(sessionId: string): Promise<SessionResponse> {
-  const response = await fetch(endpoint(`/api/v1/sessions/${sessionId}`), { cache: "no-store" });
+  const response = await fetch(endpoint(`/api/v1/sessions/${sessionId}`), {
+    cache: "no-store",
+    headers: userHeaders(),
+  });
   if (!response.ok) {
     throw new Error(`Get session failed: ${response.status}`);
   }
@@ -47,6 +73,7 @@ export async function sendChat(
 
   const response = await fetch(endpoint("/api/v1/chat"), {
     method: "POST",
+    headers: userHeaders(),
     body: formData,
   });
 
@@ -70,6 +97,7 @@ export async function streamChat(
 
   const response = await fetch(endpoint("/api/v1/chat/stream"), {
     method: "POST",
+    headers: userHeaders(),
     body: formData,
   });
 

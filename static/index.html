@@ -699,6 +699,20 @@
         return `${API_BASE}${path}`;
       }
 
+      function getUserId() {
+        const KEY = "gb_user_id";
+        let uid = localStorage.getItem(KEY);
+        if (!uid) {
+          uid = crypto.randomUUID();
+          localStorage.setItem(KEY, uid);
+        }
+        return uid;
+      }
+
+      function userHeaders() {
+        return { "X-User-ID": getUserId() };
+      }
+
       function setSidebarCollapsed(collapsed) {
         app.classList.toggle("sidebar-collapsed", collapsed);
         sidebarToggleBtn.textContent = collapsed ? "▶" : "◀";
@@ -1165,9 +1179,8 @@
 
         sessionListRefreshInFlight = true;
         try {
-          const resp = await fetch(apiUrl("/api/sessions"));
+          const resp = await fetch(apiUrl("/api/sessions"), { headers: userHeaders() });
           if (!resp.ok) {
-            return;
           }
           const data = await resp.json();
           renderSessionList(data);
@@ -1197,7 +1210,7 @@
       }
 
       async function loadSession(targetSessionId) {
-        const resp = await fetch(apiUrl(`/api/sessions/${targetSessionId}`));
+        const resp = await fetch(apiUrl(`/api/sessions/${targetSessionId}`), { headers: userHeaders() });
         if (!resp.ok) {
           const text = await resp.text();
           throw new Error(text || `加载会话失败 (${resp.status})`);
@@ -1215,7 +1228,7 @@
       async function createSession() {
         const resp = await fetch(apiUrl("/api/sessions"), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...userHeaders() },
           body: JSON.stringify({
             show_context_in_history: showContext.checked,
           }),
@@ -1241,7 +1254,7 @@
 
         const resp = await fetch(apiUrl(`/api/sessions/${sessionId}/settings`), {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...userHeaders() },
           body: JSON.stringify({
             show_context_in_history: showContext.checked,
           }),
@@ -1284,6 +1297,7 @@
 
           const resp = await fetch(apiUrl("/api/chat/stream"), {
             method: "POST",
+            headers: userHeaders(),
             body: form,
           });
 

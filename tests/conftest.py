@@ -25,5 +25,9 @@ def isolate_runtime_state(monkeypatch: pytest.MonkeyPatch) -> Generator[None, No
 
 @pytest.fixture()
 def client() -> Generator[TestClient, None, None]:
+    # Use a fixed user ID so that session create/get/chat can all see the same
+    # sessions within a single test.  Without this, get_current_user_id() would
+    # generate a fresh UUID per request and every cross-request lookup would 404.
     with TestClient(main.app) as c:
+        c.headers["X-User-ID"] = "test-user"
         yield c

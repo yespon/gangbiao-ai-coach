@@ -1,8 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import LOGGER
+from app.api.deps import LOGGER, get_current_user_id
 from app.core.config import CONTEXT_FILE, SUPPORTED_ATTACHMENT_EXTS
 from app.extractors.manager import _extract_attachment_excerpt
 from app.models.chat import ChatSession
@@ -19,12 +19,16 @@ router = APIRouter()
 
 
 @router.post("/sessions", response_model=SessionResponse)
-async def create_session(req: CreateSessionRequest) -> SessionResponse:
+async def create_session(
+    req: CreateSessionRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> SessionResponse:
     sid = uuid.uuid4().hex
     session = ChatSession(
         session_id=sid,
         show_context_in_history=req.show_context_in_history,
         context_file=CONTEXT_FILE.name,
+        user_id=user_id,
     )
     session.messages.extend(load_default_context_messages(CONTEXT_FILE, LOGGER))
     session.messages.extend(
@@ -35,7 +39,7 @@ async def create_session(req: CreateSessionRequest) -> SessionResponse:
         )
     )
     SESSIONS[sid] = session
-    LOGGER.bind(session_id=sid).info(
+    LOGGER.bind(session_id=sid, user_id=user_id).info(
         "session_created show_context_in_history={} message_count={}",
         session.show_context_in_history,
         len(session.messages),
@@ -49,8 +53,14 @@ async def create_session(req: CreateSessionRequest) -> SessionResponse:
 
 
 @router.get("/sessions", response_model=list[SessionSummaryResponse])
-async def list_sessions() -> list[dict[str, str]]:
-    summaries = [_session_summary_for_client(session) for session in SESSIONS.values()]
+async def list_sessions(
+    user_id: str = Depends(get_current_user_id),
+) -> list[dict[str, str]]:
+    summaries = [
+        _session_summary_for_client(session)
+        for session in SESSIONS.values()
+        if session.user_id == user_id
+    ]
     return sorted(summaries, key=lambda item: item["updated_at"], reverse=True)
 
 
@@ -58,9 +68,10 @@ async def list_sessions() -> list[dict[str, str]]:
 async def update_session_settings(
     session_id: str,
     req: UpdateSessionSettingsRequest,
+    user_id: str = Depends(get_current_user_id),
 ) -> SessionResponse:
     session = SESSIONS.get(session_id)
-    if not session:
+    if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")
     session.show_context_in_history = req.show_context_in_history
     return SessionResponse(
@@ -72,9 +83,12 @@ async def update_session_settings(
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
-async def get_session(session_id: str) -> SessionResponse:
+async def get_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> SessionResponse:
     session = SESSIONS.get(session_id)
-    if not session:
+    if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")
     return SessionResponse(
         session_id=session.session_id,

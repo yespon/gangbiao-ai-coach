@@ -3,10 +3,10 @@ import json
 import os
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import LOGGER
+from app.api.deps import LOGGER, get_current_user_id
 from app.extractors.manager import _save_attachments
 from app.models.chat import ChatMessage
 from app.services.chat_service import _append_user_message_with_attachments, _finalize_stream_reply
@@ -71,9 +71,10 @@ async def chat(
     session_id: str = Form(...),
     message: str = Form(...),
     files: list[UploadFile] = File(default=[]),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
     session = SESSIONS.get(session_id)
-    if not session:
+    if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")
 
     chat_logger = LOGGER.bind(session_id=session_id)
@@ -107,9 +108,10 @@ async def chat_stream(
     session_id: str = Form(...),
     message: str = Form(...),
     files: list[UploadFile] = File(default=[]),
+    user_id: str = Depends(get_current_user_id),
 ) -> StreamingResponse:
     session = SESSIONS.get(session_id)
-    if not session:
+    if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")
 
     stream_logger = LOGGER.bind(session_id=session_id)
