@@ -27,19 +27,8 @@ def _build_model_messages(session: ChatSession, user_msg: ChatMessage) -> list[d
             continue
         messages.append({"role": msg.role, "content": msg.content})
 
-    # Build user message with attachment content
-    user_content = user_msg.content
-    if user_msg.attachments:
-        attachment_info = "\n\n【用户上传的附件信息】\n"
-        for att in user_msg.attachments:
-            attachment_info += f"文件名: {att.get('filename', '未知')}\n"
-            attachment_info += f"大小: {att.get('size', 0)} bytes\n"
-            if att.get('excerpt'):
-                attachment_info += f"内容:\n{att.get('excerpt')}\n"
-            attachment_info += "\n"
-        user_content = user_content + attachment_info if user_content.strip() else attachment_info
-    
-    messages.append({"role": "user", "content": user_content})
+    # Attachment excerpts are already embedded in user_msg.content by the chat service.
+    messages.append({"role": "user", "content": user_msg.content})
     return messages
 
 

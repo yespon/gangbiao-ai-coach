@@ -26,11 +26,9 @@ async def _append_user_message_with_attachments(
         len(saved_files),
         bool(user_text),
     )
+    final_user_text = user_text
     if file_hints:
-        request_logger.info("attachment_hints: {}", "; ".join(file_hints))
-
-    # Do NOT append file_hints to message content—only log them
-    final_user_text = user_text.strip() if user_text else ""
+        final_user_text = f"{user_text}\n\n" + "\n\n".join(file_hints)
     user_msg = ChatMessage(role="user", content=final_user_text, attachments=saved_files)
     session.messages.append(user_msg)
     return user_msg
