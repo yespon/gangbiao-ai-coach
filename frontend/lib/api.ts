@@ -142,12 +142,14 @@ export async function streamChat(
           continue;
         }
 
+        let event: StreamEvent;
         try {
-          const event = JSON.parse(raw) as StreamEvent;
-          onEvent(event);
+          event = JSON.parse(raw) as StreamEvent;
         } catch {
           onEvent({ type: "error", message: "Malformed SSE payload." });
+          continue;
         }
+        onEvent(event);
       }
     }
   }

@@ -1118,12 +1118,14 @@
             }
 
             const payloadText = dataLines.join("\n");
+            let payload;
             try {
-              const payload = JSON.parse(payloadText);
-              onEvent(payload);
+              payload = JSON.parse(payloadText);
             } catch {
               // Ignore malformed stream chunks.
+              continue;
             }
+            onEvent(payload);
           }
         }
       }

@@ -1,3 +1,4 @@
+import logging
 import uuid
 import os
 from pathlib import Path
@@ -8,6 +9,8 @@ from fastapi import UploadFile
 from app.core.config import BASE_DIR, UPLOAD_ROOT
 from app.extractors.document import _extract_doc_text, _extract_docx_text, _extract_pdf_text
 from app.extractors.spreadsheet import _extract_xls_text, _extract_xlsx_text
+
+_logger = logging.getLogger(__name__)
 
 
 def _int_env(name: str, default: int, minimum: int) -> int:
@@ -83,7 +86,12 @@ async def _save_attachments(
         target.write_bytes(raw_bytes)
 
         lower_name = safe_name.lower()
-        excerpt = _extract_attachment_excerpt(raw_bytes=raw_bytes, lower_name=lower_name)
+        try:
+            excerpt = _extract_attachment_excerpt(raw_bytes=raw_bytes, lower_name=lower_name)
+        except Exception as exc:  # noqa: BLE001
+            # Corrupted / unsupported file — save it but skip text extraction.
+            _logger.warning("Failed to extract text from attachment %s: %s", safe_name, exc)
+            excerpt = ""
 
         meta = {
             "filename": safe_name,
