@@ -29,7 +29,10 @@ def _clip_text(text: str, limit: int) -> str:
 
 
 ATTACHMENT_EXCERPT_CHARS = _int_env("ATTACHMENT_EXCERPT_CHARS", 0, 0)
-ATTACHMENT_HINT_CHARS = _int_env("ATTACHMENT_HINT_CHARS", 800, 120)
+# 0 = no clipping: embed the full extracted text into the hint so the entire
+# spreadsheet / document content is baked into user_msg.content and persists
+# across all subsequent conversation turns.
+ATTACHMENT_HINT_CHARS = _int_env("ATTACHMENT_HINT_CHARS", 0, 0)
 
 
 def _extract_attachment_excerpt(raw_bytes: bytes, lower_name: str) -> str:
@@ -89,7 +92,7 @@ async def _save_attachments(
 
         hint = f"附件: {safe_name} ({len(raw_bytes)} bytes)"
         if excerpt:
-            hint += f"\n可读摘要:\n{excerpt[:ATTACHMENT_HINT_CHARS]}"
+            hint += f"\n可读摘要:\n{_clip_text(excerpt, ATTACHMENT_HINT_CHARS)}"
         else:
             hint += "\n未提取到可读文本（建议使用 txt/md/json/csv/doc/docx/xls/xlsx/pdf，或粘贴关键内容）"
         attachment_hints.append(hint)
