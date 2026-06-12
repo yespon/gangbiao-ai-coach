@@ -1,10 +1,10 @@
 import re
-import os
 from io import BytesIO
 from typing import Any
 
 import xlrd
 from openpyxl import load_workbook
+from app.core.config import settings
 
 
 _HEADER_SCAN_LIMIT = 12
@@ -50,20 +50,10 @@ _GANGBIAO_HEADER_ALIASES = {
 }
 
 
-def _int_env(name: str, default: int, minimum: int) -> int:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return max(value, minimum)
-
 
 # 0 means no hard limit so the full sheet can be extracted.
-_RAW_ROW_LIMIT = _int_env("SPREADSHEET_RAW_ROW_LIMIT", 0, 0)
-_RAW_COL_LIMIT = _int_env("SPREADSHEET_RAW_COL_LIMIT", 0, 0)
+_RAW_ROW_LIMIT = settings.spreadsheet_raw_row_limit
+_RAW_COL_LIMIT = settings.spreadsheet_raw_col_limit
 
 
 def _effective_limit(available: int, configured_limit: int) -> int:

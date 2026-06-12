@@ -1,9 +1,8 @@
 import json
-import os
 from pathlib import Path
 from typing import Any
 
-from app.core.config import BASE_DIR, _env_flag, _resolve_materials_dir
+from app.core.config import BASE_DIR, settings
 from app.models.chat import ChatMessage
 
 MATERIALS_CONTEXT_CACHE: list[ChatMessage] = []
@@ -133,13 +132,13 @@ def load_materials_context_messages(
 ) -> list[ChatMessage]:
     global MATERIALS_CONTEXT_CACHE
 
-    if not _env_flag("MATERIALS_AUTOLOAD", True):
+    if not settings.materials_autoload:
         return []
 
     if MATERIALS_CONTEXT_CACHE:
         return _clone_context_messages(MATERIALS_CONTEXT_CACHE)
 
-    materials_dir = _resolve_materials_dir()
+    materials_dir = settings.resolved_materials_dir()
     if not materials_dir:
         return []
 
@@ -147,8 +146,8 @@ def load_materials_context_messages(
         logger.warning("MATERIALS_DIR does not exist or is not a directory: {}", materials_dir)
         return []
 
-    max_files = max(int(os.getenv("MATERIALS_MAX_FILES", "20") or "20"), 1)
-    max_excerpt_chars = max(int(os.getenv("MATERIALS_MAX_EXCERPT_CHARS", "1200") or "1200"), 200)
+    max_files = max(settings.materials_max_files, 1)
+    max_excerpt_chars = max(settings.materials_max_excerpt_chars, 200)
 
     candidates = sorted(
         [

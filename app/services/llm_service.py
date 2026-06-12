@@ -1,10 +1,10 @@
 import json
-import os
 from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import HTTPException
 
+from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession
 
 
@@ -33,9 +33,9 @@ def _build_model_messages(session: ChatSession, user_msg: ChatMessage) -> list[d
 
 
 async def _call_llm(messages: list[dict[str, str]]) -> str:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    api_key = settings.openai_api_key
+    model = settings.openai_model
+    base_url = settings.openai_base_url.rstrip("/")
 
     if not api_key:
         last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -61,9 +61,9 @@ async def _call_llm(messages: list[dict[str, str]]) -> str:
 
 
 async def _call_llm_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    api_key = settings.openai_api_key
+    model = settings.openai_model
+    base_url = settings.openai_base_url.rstrip("/")
 
     if not api_key:
         last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")

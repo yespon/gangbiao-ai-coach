@@ -1,24 +1,13 @@
 import uuid
-import os
 from pathlib import Path
 from typing import Any
 
 from fastapi import UploadFile
 
-from app.core.config import BASE_DIR, UPLOAD_ROOT
+from app.core.config import BASE_DIR, UPLOAD_ROOT, settings
 from app.extractors.document import _extract_doc_text, _extract_docx_text, _extract_pdf_text
 from app.extractors.spreadsheet import _extract_xls_text, _extract_xlsx_text
 
-
-def _int_env(name: str, default: int, minimum: int) -> int:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return max(value, minimum)
 
 
 def _clip_text(text: str, limit: int) -> str:
@@ -28,15 +17,15 @@ def _clip_text(text: str, limit: int) -> str:
     return text[:limit]
 
 
-ATTACHMENT_EXCERPT_CHARS = _int_env("ATTACHMENT_EXCERPT_CHARS", 0, 0)
+ATTACHMENT_EXCERPT_CHARS = settings.attachment_excerpt_chars
 # 0 = no clipping: embed the full extracted text into the hint so the entire
 # spreadsheet / document content is baked into user_msg.content and persists
 # across all subsequent conversation turns.
-ATTACHMENT_HINT_CHARS = _int_env("ATTACHMENT_HINT_CHARS", 0, 0)
+ATTACHMENT_HINT_CHARS = settings.attachment_hint_chars
 
 # When True, prepend the "附件: <name> (<size> bytes)" meta line to every hint.
 # Defaults to False so the raw extracted content is sent directly without noise.
-ATTACHMENT_SHOW_META = os.getenv("ATTACHMENT_SHOW_META", "").strip().lower() in ("1", "true", "yes")
+ATTACHMENT_SHOW_META = settings.attachment_show_meta
 
 
 def _extract_attachment_excerpt(raw_bytes: bytes, lower_name: str) -> str:

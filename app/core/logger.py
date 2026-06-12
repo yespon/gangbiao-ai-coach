@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 import time
 import uuid
@@ -8,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request
 from loguru import logger
 
-from app.core.config import BASE_DIR
+from app.core.config import BASE_DIR, settings
 
 
 class InterceptHandler(logging.Handler):
@@ -28,11 +27,11 @@ class InterceptHandler(logging.Handler):
 
 
 def setup_logging() -> None:
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    log_file = os.getenv("LOG_FILE", "app.log").strip() or "app.log"
-    log_rotation = os.getenv("LOG_ROTATION", "1 day").strip() or "1 day"
-    log_retention = os.getenv("LOG_RETENTION", "14 days").strip() or "14 days"
-    log_json = os.getenv("LOG_JSON", "false").strip().lower() in {"1", "true", "yes", "on"}
+    log_level = settings.log_level.upper()
+    log_file = settings.log_file.strip() or "app.log"
+    log_rotation = settings.log_rotation.strip() or "1 day"
+    log_retention = settings.log_retention.strip() or "14 days"
+    log_json = settings.log_json
     log_dir = BASE_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 

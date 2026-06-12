@@ -1,6 +1,5 @@
 from collections.abc import AsyncIterator
 import json
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -12,20 +11,15 @@ from app.models.chat import ChatMessage
 from app.services.chat_service import _append_user_message_with_attachments, _finalize_stream_reply
 from app.services.llm_service import _build_model_messages, _call_llm, _call_llm_stream
 from app.services.session_service import SESSIONS, _session_history_for_client
+from app.core.config import settings
 from app.services.sse_service import build_delta_event, build_error_event, format_sse_event
 
 router = APIRouter()
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
-
-_LLM_PAYLOAD_DEBUG = _env_flag("LLM_PAYLOAD_DEBUG", False)
-_LLM_PAYLOAD_PREVIEW_CHARS = max(int(os.getenv("LLM_PAYLOAD_PREVIEW_CHARS", "180") or "180"), 50)
+_LLM_PAYLOAD_DEBUG = settings.llm_payload_debug
+_LLM_PAYLOAD_PREVIEW_CHARS = max(settings.llm_payload_preview_chars, 50)
 
 
 def _sanitize_preview(text: str, limit: int) -> str:

@@ -10,12 +10,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import main
+from app.core.config import settings
 
 
 @pytest.fixture(autouse=True)
 def isolate_runtime_state(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     monkeypatch.setenv("MATERIALS_AUTOLOAD", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "materials_autoload", False)
+    monkeypatch.setattr(settings, "openai_api_key", "")
     main.SESSIONS.clear()
     main.MATERIALS_CONTEXT_CACHE.clear()
     yield
