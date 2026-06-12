@@ -179,7 +179,7 @@ export default function HomePage() {
             setHistory(evt.history || []);
             setStreamingDraft("");
           } else if (evt.type === "error") {
-            setError(evt.message);
+            setError(evt.error || "AI 回复出现问题，请稍后重试");
             setStreamingDraft("");
           }
         });
@@ -310,7 +310,11 @@ export default function HomePage() {
             </div>
           </form>
 
-          {error ? <div className="hint error-text">Error: {error}</div> : null}
+          {error ? (
+            <div className="hint error-text" role="alert" aria-live="assertive">
+              ⚠ {error}
+            </div>
+          ) : null}
         </section>
       </div>
     </main>

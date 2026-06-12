@@ -30,4 +30,4 @@ export interface ChatResponse {
 export type StreamEvent =
   | { type: "delta"; delta: string }
   | { type: "done"; session_id: string; reply: string; history: ChatHistoryItem[] }
-  | { type: "error"; message: string };
+  | { type: "error"; error: string };

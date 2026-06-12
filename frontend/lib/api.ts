@@ -146,7 +146,7 @@ export async function streamChat(
         try {
           event = JSON.parse(raw) as StreamEvent;
         } catch {
-          onEvent({ type: "error", message: "Malformed SSE payload." });
+          onEvent({ type: "error", error: "收到无效的流式数据，请重试" });
           continue;
         }
         onEvent(event);

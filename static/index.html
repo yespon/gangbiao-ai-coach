@@ -954,12 +954,29 @@
         historyWindowLoadingOlder = false;
       }
 
+      function friendlyError(raw) {
+        if (!raw) return "发生了未知错误，请重试";
+        const t = String(raw);
+        if (t.includes("会话不存在") || t.includes("404"))
+          return "会话已失效，请刷新页面或新建会话";
+        if (t.includes("同时为空") || t.includes("400"))
+          return "请输入消息内容或上传附件后再发送";
+        if (t.includes("500") || t.includes("Internal Server Error"))
+          return "服务器内部错误，请稍后重试";
+        if (/failed to fetch|networkerror|typeerror/i.test(t))
+          return "网络连接失败，请检查网络后重试";
+        if (t.includes("Stream chat failed") || t.includes("发送失败"))
+          return "消息发送失败，请检查网络或稍后重试";
+        return t.length > 100 ? t.slice(0, 100) + "…" : t;
+      }
+
       function renderErrorMessage(text) {
         const row = document.createElement("div");
         row.className = "msg-row system";
+        row.setAttribute("role", "alert");
         row.innerHTML = `
           <article class="msg">
-            <div class="msg-head">system · error</div>
+            <div class="msg-head">⚠ 提示</div>
             <div class="msg-content">${escapeHtml(text)}</div>
           </article>
         `;
@@ -1347,7 +1364,7 @@
             }
 
             if (payload.type === "error") {
-              throw new Error(String(payload.error || "流式请求失败"));
+              throw new Error(friendlyError(payload.error || "AI 回复出现问题"));
             }
 
             if (payload.type === "done") {
@@ -1389,9 +1406,9 @@
         try {
           await createSession();
         } catch (err) {
-          const text = err instanceof Error ? err.message : String(err);
-          sessionMeta.textContent = `创建会话失败: ${text}`;
-          renderErrorMessage(`创建会话失败: ${text}`);
+          const text = friendlyError(err instanceof Error ? err.message : String(err));
+          sessionMeta.textContent = `无法创建会话`;
+          renderErrorMessage(`无法创建会话：${text}`);
         }
       });
 
@@ -1409,8 +1426,7 @@
         try {
           await loadSession(targetId);
         } catch (err) {
-          const text = err instanceof Error ? err.message : String(err);
-          renderErrorMessage(`切换会话失败: ${text}`);
+          renderErrorMessage(`切换会话失败：${friendlyError(err instanceof Error ? err.message : String(err))}`);
         }
       });
 
@@ -1464,8 +1480,7 @@
         } catch (err) {
           clearThinkingIndicator();
           thinking = false;
-          const text = err instanceof Error ? err.message : String(err);
-          renderErrorMessage(`发送失败: ${text}`);
+          renderErrorMessage(friendlyError(err instanceof Error ? err.message : String(err)));
         }
       });
 
@@ -1473,8 +1488,7 @@
         try {
           await updateContextSetting();
         } catch (err) {
-          const text = err instanceof Error ? err.message : String(err);
-          renderErrorMessage(`更新设置失败: ${text}`);
+          renderErrorMessage(`更新设置失败：${friendlyError(err instanceof Error ? err.message : String(err))}`);
         }
       });
 
@@ -1503,14 +1517,13 @@
           } catch (err) {
             clearThinkingIndicator();
             thinking = false;
-            const text = err instanceof Error ? err.message : String(err);
-            renderErrorMessage(`发送失败: ${text}`);
+            renderErrorMessage(friendlyError(err instanceof Error ? err.message : String(err)));
           }
         }
       });
 
       createSession().catch((err) => {
-        sessionMeta.textContent = `创建会话失败: ${err.message}`;
+        sessionMeta.textContent = `会话初始化失败，请刷新页面`;
       });
 
       resizeComposerInput();
