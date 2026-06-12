@@ -1,4 +1,4 @@
-import json
+﻿import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -33,7 +33,7 @@ def _build_model_messages(session: ChatSession, user_msg: ChatMessage) -> list[d
 
 
 async def _call_llm(messages: list[dict[str, str]]) -> str:
-    api_key = settings.openai_api_key
+    api_key = settings.openai_api_key.strip()
     model = settings.openai_model
     base_url = settings.openai_base_url.rstrip("/")
 
@@ -61,7 +61,7 @@ async def _call_llm(messages: list[dict[str, str]]) -> str:
 
 
 async def _call_llm_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
-    api_key = settings.openai_api_key
+    api_key = settings.openai_api_key.strip()
     model = settings.openai_model
     base_url = settings.openai_base_url.rstrip("/")
 
