@@ -55,12 +55,8 @@ class Settings(BaseSettings):
     spreadsheet_raw_row_limit: int = 0
     spreadsheet_raw_col_limit: int = 0
 
-    # --- Database / Auth (new) ---
+    # --- Database ---
     database_url: str = "postgresql+asyncpg://gangbiao:gangbiao@localhost:5432/gangbiao"
-    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"
-    jwt_algorithm: str = "HS256"
-    jwt_access_expire_minutes: int = 30
-    jwt_refresh_expire_days: int = 7
 
     # --- CAS / SSO ---
     auth_mode: str = "both"  # "sso" | "local" | "both"
