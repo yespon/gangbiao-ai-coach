@@ -782,6 +782,22 @@ textarea {
   color: var(--ink);
 }
 
+.auth-local-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.auth-local-toggle:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+.auth-disabled-hint {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* Back link */
 .auth-back-link {
   display: block;

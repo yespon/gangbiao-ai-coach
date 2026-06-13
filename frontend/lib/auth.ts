@@ -60,6 +60,13 @@ export function getCasLoginUrl(): string {
   return `${API_BASE}/api/v1/cas/login`;
 }
 
+/** Fetch public auth config (auth_mode) for the login page. */
+export async function getAuthConfig(): Promise<{ auth_mode: string }> {
+  const resp = await fetch(`${API_BASE}/api/v1/auth/config`);
+  if (!resp.ok) throw new Error("config unavailable");
+  return resp.json();
+}
+
 // ---------- Local auth (email/password) ----------
 
 /**

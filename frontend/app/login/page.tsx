@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { casExchange, getCasLoginUrl, login, checkAuth, hasSessionHint } from "@/lib/auth";
+import { casExchange, getCasLoginUrl, login, checkAuth, hasSessionHint, getAuthConfig } from "@/lib/auth";
 import Link from "next/link";
 
 type LoginMode = "choice" | "exchanging" | "local";
@@ -14,6 +14,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState("");
+
+  const [authMode, setAuthMode] = useState("both");
+
+  const localDisabled = authMode === "sso";
+  const ssoDisabled = authMode === "local";
 
   useEffect(() => {
     // If already authenticated (e.g. has session cookie), redirect to home
@@ -31,6 +36,11 @@ export default function LoginPage() {
       setStatusText("正在验证企业 SSO 登录...");
       handleCasExchange(ticket);
     }
+
+    // Fetch auth_mode to grey out disabled entry; fall back to "both" on error
+    getAuthConfig()
+      .then((cfg) => setAuthMode(cfg.auth_mode))
+      .catch(() => setAuthMode("both"));
   }, []);
 
   async function handleCasExchange(ticket: string) {
@@ -96,7 +106,7 @@ export default function LoginPage() {
           type="button"
           className="auth-sso-btn"
           onClick={handleSsoLogin}
-          disabled={busy}
+          disabled={busy || ssoDisabled}
         >
           <svg className="auth-sso-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
@@ -105,6 +115,9 @@ export default function LoginPage() {
           </svg>
           企业 SSO 登录
         </button>
+        {ssoDisabled && mode === "choice" ? (
+          <div className="auth-disabled-hint">管理员已禁用 SSO 登录</div>
+        ) : null}
 
         {/* Divider */}
         {mode === "choice" && (
@@ -115,13 +128,19 @@ export default function LoginPage() {
 
         {/* Local login toggle / form */}
         {mode === "choice" && (
-          <button
-            type="button"
-            className="auth-local-toggle"
-            onClick={() => setMode("local")}
-          >
-            使用账号密码登录
-          </button>
+          <>
+            <button
+              type="button"
+              className="auth-local-toggle"
+              onClick={() => setMode("local")}
+              disabled={localDisabled}
+            >
+              使用账号密码登录
+            </button>
+            {localDisabled ? (
+              <div className="auth-disabled-hint">管理员已禁用账号密码登录</div>
+            ) : null}
+          </>
         )}
 
         {mode === "local" && (
