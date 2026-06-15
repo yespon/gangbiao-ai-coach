@@ -372,7 +372,14 @@ export default function HomePage() {
                 disabled={busy || !hasDraft}
                 aria-label={busy ? "正在回复" : hasDraft ? "发送" : "请输入内容后发送"}
               >
-                {busy ? <span className="send-stop" /> : <span className="send-arrow" />}
+                {busy ? (
+                  <span className="send-stop" />
+                ) : (
+                  <svg className="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 19V7" />
+                    <path d="M5.5 13.5 12 7l6.5 6.5" />
+                  </svg>
+                )}
               </button>
             </div>
 
