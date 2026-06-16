@@ -33,7 +33,9 @@ def is_effective_coach(primary_role: str, is_coach: bool) -> bool:
     return primary_role == "coach" or (primary_role == "admin" and is_coach)
 
 
-def normalize_managed_user_role(primary_role: str | None, is_coach: bool, coach_id):
+def normalize_managed_user_role(
+    primary_role: str | None, is_coach: bool, coach_id: str | uuid.UUID | None
+):
     role = ROLE_LABELS.get((primary_role or "学员").strip())
     if role is None:
         raise ValueError("主角色必须是管理员、教练或学员")

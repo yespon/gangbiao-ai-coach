@@ -31,7 +31,7 @@ class ManagedUserDB(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=text("now()"), onupdate=datetime.now(UTC)
+        TIMESTAMP(timezone=True), server_default=text("now()"), onupdate=lambda: datetime.now(UTC)
     )
 
     coach: Mapped["ManagedUserDB | None"] = relationship(remote_side=[id])
