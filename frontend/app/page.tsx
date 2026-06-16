@@ -376,8 +376,8 @@ export default function HomePage() {
                   <span className="send-stop" />
                 ) : (
                   <svg className="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 19V7" />
-                    <path d="M5.5 13.5 12 7l6.5 6.5" />
+                    <path d="M12 18V6" />
+                    <path d="M6 12l6-6 6 6" />
                   </svg>
                 )}
               </button>

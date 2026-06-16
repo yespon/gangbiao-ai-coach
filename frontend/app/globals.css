@@ -549,7 +549,6 @@ textarea {
   stroke-width: 3.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transform: translateY(-1px);
 }
 
 .send-stop {
