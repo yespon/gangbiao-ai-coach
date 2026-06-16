@@ -11,6 +11,32 @@ class Base(DeclarativeBase):
     pass
 
 
+class ManagedUserDB(Base):
+    __tablename__ = "managed_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    employee_no: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    department_level1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    primary_role: Mapped[str] = mapped_column(String(20), server_default=text("'student'"), index=True)
+    is_coach: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    coach_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("managed_users.id", ondelete="SET NULL"), nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), index=True)
+    source: Mapped[str] = mapped_column(String(20), server_default=text("'manual'"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()"), onupdate=datetime.now(UTC)
+    )
+
+    coach: Mapped["ManagedUserDB | None"] = relationship(remote_side=[id])
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -22,6 +48,9 @@ class User(Base):
     nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider: Mapped[str] = mapped_column(String(20), server_default=text("'local'"))
     provider_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    managed_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("managed_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(
@@ -35,6 +64,7 @@ class User(Base):
     sessions: Mapped[list["ChatSessionDB"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    managed_user: Mapped["ManagedUserDB | None"] = relationship()
 
 
 class AuthSessionDB(Base):
