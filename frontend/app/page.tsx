@@ -343,7 +343,10 @@ export default function HomePage() {
 
             <div className="composer-box">
               <label className="attach-btn" htmlFor="chat-file-input" aria-label="上传附件">
-                +
+                <svg className="attach-plus-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
               </label>
               <input
                 id="chat-file-input"

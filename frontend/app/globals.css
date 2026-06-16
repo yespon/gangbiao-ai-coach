@@ -471,15 +471,28 @@ body {
   width: 44px;
   height: 44px;
   border-radius: 10px;
+  position: relative;
   display: grid;
   place-items: center;
   padding: 0;
   color: #27435d;
   background: transparent;
   user-select: none;
-  font-size: 42px;
-  font-weight: 500;
-  line-height: 1;
+  line-height: 0;
+}
+
+.attach-plus-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .attach-btn:hover {
