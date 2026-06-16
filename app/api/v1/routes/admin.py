@@ -14,6 +14,11 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, get_db
 from app.core.config import get_admin_employee_no_set
 from app.models.db_models import ManagedUserDB, SsoUserWhitelistDB, User
+from app.services.admin_conversation_service import (
+    get_conversation_session,
+    list_conversation_students,
+    list_student_sessions,
+)
 from app.services.managed_user_service import (
     build_managed_user_template,
     existing_coach_employee_nos,
@@ -350,3 +355,30 @@ async def import_whitelist(
         updated += 0 if was_created else 1
     await db.commit()
     return {"created": created, "updated": updated, "skipped": len(parsed.errors), "errors": parsed.errors}
+
+
+@router.get("/conversations/users")
+async def admin_conversation_users(
+    scope: str = "all",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await list_conversation_students(db, current_user, scope)
+
+
+@router.get("/conversations/users/{managed_user_id}/sessions")
+async def admin_conversation_user_sessions(
+    managed_user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await list_student_sessions(db, current_user, managed_user_id)
+
+
+@router.get("/conversations/sessions/{session_id}")
+async def admin_conversation_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await get_conversation_session(db, current_user, session_id)
