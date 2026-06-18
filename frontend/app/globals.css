@@ -1962,6 +1962,47 @@ textarea {
   color: #0f172a;
 }
 
+.admin-user-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.admin-user-toolbar label {
+  display: grid;
+  gap: 3px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.admin-user-toolbar input,
+.admin-user-toolbar select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fff;
+  color: #0f172a;
+  min-width: 120px;
+}
+
+.admin-user-toolbar input:focus,
+.admin-user-toolbar select:focus {
+  outline: none;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.16);
+}
+
+.admin-user-toolbar .admin-user-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
 @media (max-width: 1120px) {
   .admin-shell,
   .admin-stat-grid,
