@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,6 +15,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.config import get_admin_employee_no_set
 from app.models.db_models import ManagedUserDB, SsoUserWhitelistDB, User
 from app.services.admin_conversation_service import (
+    default_conversation_scope,
     get_conversation_session,
     list_conversation_students,
     list_student_sessions,
@@ -152,20 +153,46 @@ def _matches_filters(e: ManagedUserDB, q: str | None, role: str | None, enabled:
 
 @router.get("/users")
 async def list_managed_users(
+    page: int | None = None,
+    page_size: int | None = None,
     q: str | None = None,
     role: str | None = None,
     enabled: bool | None = None,
+    coach_filter: str = "all",
+    department_level1: str | None = None,
+    has_email: bool | None = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    stmt = (
-        select(ManagedUserDB)
-        .options(selectinload(ManagedUserDB.coach))
-        .order_by(ManagedUserDB.updated_at.desc())
+    from app.api.v1._pagination import clamp_page, clamp_page_size
+    from app.services.managed_user_service import (
+        ManagedUserListFilters,
+        build_managed_user_filtered_stmt,
     )
-    result = await db.execute(stmt)
-    rows = result.scalars().all()
-    return [_managed_user_row(e) for e in rows if _matches_filters(e, q, role, enabled)]
+
+    p = clamp_page(page)
+    ps = clamp_page_size(page_size)
+    filters = ManagedUserListFilters(
+        q=q,
+        role=role,
+        enabled=enabled,
+        coach_filter=coach_filter,
+        department_level1=department_level1,
+        has_email=has_email,
+    )
+    stmt = build_managed_user_filtered_stmt(filters)
+    # Count BEFORE applying LIMIT/OFFSET, on a fresh select_from.
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    page_stmt = (
+        stmt.order_by(ManagedUserDB.updated_at.desc(), ManagedUserDB.employee_no.asc())
+        .limit(ps)
+        .offset((p - 1) * ps)
+    )
+    rows = (await db.execute(page_stmt)).scalars().all()
+    items = [_managed_user_row(e) for e in rows]
+    return {"items": items, "page": p, "page_size": ps, "total": int(total)}
 
 
 @router.post("/users")
@@ -359,11 +386,12 @@ async def import_whitelist(
 
 @router.get("/conversations/users")
 async def admin_conversation_users(
-    scope: str = "all",
+    scope: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await list_conversation_students(db, current_user, scope)
+    effective_scope = scope or default_conversation_scope(current_user)
+    return await list_conversation_students(db, current_user, effective_scope)
 
 
 @router.get("/conversations/users/{managed_user_id}/sessions")

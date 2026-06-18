@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
 from app.models.db_models import ManagedUserDB
 from app.services.whitelist_service import MAX_WHITELIST_ROWS, WHITELIST_DENY_MESSAGE
@@ -209,3 +211,53 @@ async def upsert_managed_user(
     profile.enabled = requested.get("enabled", True)
     profile.source = source
     return profile, created
+
+
+ManagedUserCoachFilter = Literal["all", "unassigned"] | str  # "all" | "unassigned" | "<uuid>"
+
+
+@dataclass(slots=True)
+class ManagedUserListFilters:
+    q: str | None = None
+    role: str | None = None
+    enabled: bool | None = None
+    coach_filter: str = "all"  # "all" | "unassigned" | "<uuid>"
+    department_level1: str | None = None
+    has_email: bool | None = None
+
+
+def _haystack_columns() -> list:
+    return [
+        ManagedUserDB.employee_no,
+        ManagedUserDB.name,
+        ManagedUserDB.email,
+        ManagedUserDB.department_level1,
+    ]
+
+
+def build_managed_user_filtered_stmt(filters: ManagedUserListFilters) -> Select:
+    """Build a SELECT that already has WHERE applied; callers add LIMIT/OFFSET/ORDER BY."""
+    stmt = select(ManagedUserDB).options(selectinload(ManagedUserDB.coach))
+    if filters.role:
+        stmt = stmt.where(ManagedUserDB.primary_role == filters.role)
+    if filters.enabled is not None:
+        stmt = stmt.where(ManagedUserDB.enabled.is_(filters.enabled))
+    if filters.department_level1:
+        stmt = stmt.where(ManagedUserDB.department_level1 == filters.department_level1)
+    if filters.has_email is True:
+        stmt = stmt.where(ManagedUserDB.email.is_not(None))
+    elif filters.has_email is False:
+        stmt = stmt.where(ManagedUserDB.email.is_(None))
+    if filters.coach_filter == "unassigned":
+        stmt = stmt.where(ManagedUserDB.coach_id.is_(None))
+    elif filters.coach_filter not in (None, "all", ""):
+        try:
+            stmt = stmt.where(ManagedUserDB.coach_id == uuid.UUID(filters.coach_filter))
+        except ValueError:
+            # Invalid UUIDs are treated as "no match" — caller can decide to 400.
+            stmt = stmt.where(False)
+    if filters.q:
+        needle = f"%{filters.q.strip().lower()}%"
+        cols = _haystack_columns()
+        stmt = stmt.where(or_(*[func.lower(c).like(needle) for c in cols]))
+    return stmt
