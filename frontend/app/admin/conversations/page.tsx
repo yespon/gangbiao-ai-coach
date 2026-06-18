@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getConversationSession, listConversationSessions, listConversationUsers } from "@/lib/admin";
+import { getConversationSession, listConversationSessions, listConversationUsers, summarizeConversation } from "@/lib/admin";
 import { checkAuth } from "@/lib/auth";
 import type { AdminConversationDetail, AdminSessionSummary, ConversationUserSummary } from "@/types/admin";
 import type { UserInfo } from "@/types/auth";
@@ -17,10 +17,15 @@ export default function AdminConversationsPage() {
   const [sessions, setSessions] = useState<AdminSessionSummary[]>([]);
   const [selectedSession, setSelectedSession] = useState<AdminSessionSummary | null>(null);
   const [detail, setDetail] = useState<AdminConversationDetail | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState("");
+  const [summary, setSummary] = useState<{ summary: string; sampled_count: number; total_count: number } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -48,7 +53,18 @@ export default function AdminConversationsPage() {
     };
   }, []);
 
-  const selectedUserName = useMemo(() => formatUserName(selectedUser), [selectedUser]);
+  const stats = useMemo(() => {
+    const totalSessions = users.reduce((sum, user) => sum + user.session_count, 0);
+    const activeUsers = users.filter((user) => user.session_count > 0).length;
+    const avg = users.length === 0 ? 0 : totalSessions / users.length;
+    return {
+      totalSessions,
+      activeUsers,
+      average: avg.toFixed(1),
+    };
+  }, [users]);
+
+  const sessionTitle = selectedUser ? `${formatUserName(selectedUser)} · 会话回放` : "会话回放";
 
   async function changeScope(nextScope: ConversationScope) {
     if (nextScope === scope) return;
@@ -73,16 +89,20 @@ export default function AdminConversationsPage() {
     }
   }
 
-  async function selectUser(user: ConversationUserSummary) {
+  async function openUserDialog(user: ConversationUserSummary) {
     setSelectedUser(user);
     setSelectedSession(null);
     setDetail(null);
     setSessions([]);
+    setDialogOpen(true);
     setLoadingSessions(true);
     setError("");
     try {
       const userSessions = await listConversationSessions(user.managed_user_id);
       setSessions(userSessions);
+      if (userSessions.length > 0) {
+        await selectSession(userSessions[0]);
+      }
     } catch (err) {
       setError(formatError(err));
     } finally {
@@ -90,9 +110,20 @@ export default function AdminConversationsPage() {
     }
   }
 
+  function closeDialog() {
+    setDialogOpen(false);
+    setSelectedUser(null);
+    setSelectedSession(null);
+    setSessions([]);
+    setDetail(null);
+  }
+
   async function selectSession(session: AdminSessionSummary) {
     setSelectedSession(session);
     setDetail(null);
+    setSummary(null);
+    setSummaryError("");
+    setSummaryCollapsed(false);
     setLoadingDetail(true);
     setError("");
     try {
@@ -105,13 +136,28 @@ export default function AdminConversationsPage() {
     }
   }
 
+  async function runSummary() {
+    if (!selectedSession) return;
+    setSummaryLoading(true);
+    setSummaryError("");
+    setSummaryCollapsed(false);
+    try {
+      const result = await summarizeConversation(selectedSession.session_id);
+      setSummary(result);
+    } catch (err) {
+      setSummaryError(formatError(err));
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
   return (
     <div className="admin-page-stack">
       <section className="admin-page-header admin-conversation-header">
         <div>
           <p className="admin-kicker">Conversation Archive</p>
           <h2>对话历史</h2>
-          <p>按权限查看学员与 AI 教练的历史会话，仅提供只读审阅。</p>
+          <p>按角色权限查看历史会话。管理员可切换全部/我的学员，教练仅查看负责学员。</p>
         </div>
         <div className="admin-segmented" role="group" aria-label="对话范围">
           <button className={scope === "mine" ? "active" : ""} type="button" onClick={() => void changeScope("mine")} disabled={loadingUsers}>
@@ -125,138 +171,168 @@ export default function AdminConversationsPage() {
         </div>
       </section>
 
+      <section className="admin-stat-grid" aria-label="会话统计">
+        <article className="admin-card admin-stat-card">
+          <p className="admin-kicker">Total Sessions</p>
+          <h3>{stats.totalSessions}</h3>
+          <p>总会话次数</p>
+        </article>
+        <article className="admin-card admin-stat-card">
+          <p className="admin-kicker">Active Students</p>
+          <h3>{stats.activeUsers}</h3>
+          <p>活跃学员数</p>
+        </article>
+        <article className="admin-card admin-stat-card">
+          <p className="admin-kicker">Average</p>
+          <h3>{stats.average}</h3>
+          <p>平均会话次数</p>
+        </article>
+      </section>
+
       {error ? <div className="admin-error">{error}</div> : null}
 
-      <section className="admin-conversation-grid">
-        <article className="admin-card admin-table-card">
-          <div className="admin-section-head">
-            <div>
-              <p className="admin-kicker">Students</p>
-              <h3>学员概览</h3>
-            </div>
-            <span className="admin-count">{users.length} 人</span>
-          </div>
-
-          {loadingUsers ? (
-            <div className="admin-empty-state">正在加载学员对话数据...</div>
-          ) : users.length === 0 ? (
-            <div className="admin-empty-state">当前范围暂无学员会话。</div>
-          ) : (
-            <div className="admin-table-wrap">
-              <table className="admin-table admin-conversation-users-table">
-                <thead>
-                  <tr>
-                    <th>工号</th>
-                    <th>姓名</th>
-                    <th>一级部门</th>
-                    <th>会话数</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => {
-                    const selected = selectedUser?.managed_user_id === user.managed_user_id;
-                    return (
-                      <tr className={selected ? "admin-selected-row" : ""} key={user.managed_user_id}>
-                        <td>{user.employee_no}</td>
-                        <td>{user.name || "未填写"}</td>
-                        <td>{user.department_level1 || "未填写"}</td>
-                        <td>{user.session_count}</td>
-                        <td>
-                          <button className="admin-link-button" type="button" onClick={() => void selectUser(user)}>
-                            查看
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-
-        <article className="admin-card admin-table-card">
-          <div className="admin-section-head">
-            <div>
-              <p className="admin-kicker">Sessions</p>
-              <h3>{selectedUser ? `${selectedUserName} 的会话` : "会话列表"}</h3>
-            </div>
-            <span className="admin-count">{sessions.length} 条</span>
-          </div>
-
-          {!selectedUser ? (
-            <div className="admin-empty-state">请先选择左侧学员。</div>
-          ) : loadingSessions ? (
-            <div className="admin-empty-state">正在加载会话列表...</div>
-          ) : sessions.length === 0 ? (
-            <div className="admin-empty-state">该学员暂无会话。</div>
-          ) : (
-            <div className="admin-table-wrap">
-              <table className="admin-table admin-conversation-sessions-table">
-                <thead>
-                  <tr>
-                    <th>最近内容</th>
-                    <th>更新时间</th>
-                    <th>消息数</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((session) => {
-                    const selected = selectedSession?.session_id === session.session_id;
-                    return (
-                      <tr className={selected ? "admin-selected-row" : ""} key={session.session_id}>
-                        <td className="admin-preview-cell">{session.latest_preview || "暂无内容"}</td>
-                        <td>{formatDate(session.updated_at)}</td>
-                        <td>{session.message_count}</td>
-                        <td>
-                          <button className="admin-link-button" type="button" onClick={() => void selectSession(session)}>
-                            详情
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="admin-card admin-conversation-detail-card">
+      <section className="admin-card admin-table-card">
         <div className="admin-section-head">
           <div>
-            <p className="admin-kicker">Read-only Detail</p>
-            <h3>会话详情</h3>
+            <p className="admin-kicker">Students</p>
+            <h3>学员会话列表</h3>
           </div>
-          {detail ? <span className="admin-count">{detail.history.length} 条消息</span> : null}
+          <span className="admin-count">{users.length} 人</span>
         </div>
 
-        {!selectedSession ? (
-          <div className="admin-empty-state">选择会话后在此查看完整历史。</div>
-        ) : loadingDetail ? (
-          <div className="admin-empty-state">正在加载会话详情...</div>
-        ) : detail ? (
-          <div className="admin-detail-stack">
-            <div className="admin-detail-meta">
-              <span>{formatUserName(detail.student)}</span>
-              <span>创建：{formatDate(detail.created_at)}</span>
-              <span>更新：{formatDate(detail.updated_at)}</span>
-            </div>
-            <div className="admin-message-list" aria-label="会话消息">
-              {detail.history.length === 0 ? (
-                <div className="admin-empty-state">该会话暂无消息内容。</div>
-              ) : (
-                detail.history.map((message, index) => <ConversationMessage message={message} index={index} key={`${message.role}-${index}`} />)
-              )}
-            </div>
-          </div>
+        {loadingUsers ? (
+          <div className="admin-empty-state">正在加载学员会话数据...</div>
+        ) : users.length === 0 ? (
+          <div className="admin-empty-state">当前范围暂无学员会话。</div>
         ) : (
-          <div className="admin-empty-state">暂无详情。</div>
+          <div className="admin-table-wrap">
+            <table className="admin-table admin-conversation-users-table">
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th>工号</th>
+                  <th>一级部门</th>
+                  <th>所属教练</th>
+                  <th>会话数</th>
+                  <th>最近活跃</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.managed_user_id}>
+                    <td>{user.name || "未填写"}</td>
+                    <td>{user.employee_no}</td>
+                    <td>{user.department_level1 || "未填写"}</td>
+                    <td>{user.coach_name || "未分配"}</td>
+                    <td>{user.session_count}</td>
+                    <td>{formatDate(user.latest_session_at)}</td>
+                    <td>
+                      <button className="admin-link-button" type="button" onClick={() => void openUserDialog(user)}>
+                        查看
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
+
+      {dialogOpen ? (
+        <div className="admin-dialog-backdrop" role="presentation" onClick={closeDialog}>
+          <section className="admin-dialog admin-conversation-dialog" role="dialog" aria-modal="true" aria-label="会话详情" onClick={(event) => event.stopPropagation()}>
+            <div className="admin-dialog-head">
+              <div>
+                <p className="admin-kicker">Conversation Playback</p>
+                <h3>{sessionTitle}</h3>
+                <p>{selectedUser ? `共 ${sessions.length} 条记录` : "请选择学员"}</p>
+              </div>
+              <div className="admin-dialog-head-actions">
+                <button
+                  className="admin-summary-btn"
+                  type="button"
+                  onClick={() => void runSummary()}
+                  disabled={!selectedSession || summaryLoading}
+                  aria-label="AI 速览"
+                >
+                  ✨ AI 速览
+                </button>
+                <button className="admin-dialog-close" type="button" onClick={closeDialog} aria-label="关闭">
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-conversation-dialog-grid">
+              <aside className="admin-session-pane" aria-label="会话列表">
+                {loadingSessions ? (
+                  <div className="admin-empty-state">正在加载会话列表...</div>
+                ) : sessions.length === 0 ? (
+                  <div className="admin-empty-state">该学员暂无会话。</div>
+                ) : (
+                  <div className="admin-session-list">
+                    {sessions.map((session) => {
+                      const selected = selectedSession?.session_id === session.session_id;
+                      return (
+                        <button
+                          className={`admin-session-item ${selected ? "active" : ""}`}
+                          type="button"
+                          key={session.session_id}
+                          onClick={() => void selectSession(session)}
+                        >
+                          <strong>{session.latest_preview || "暂无内容"}</strong>
+                          <span>{formatDate(session.updated_at)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </aside>
+
+              <section className="admin-conversation-pane">
+                {!selectedSession ? (
+                  <div className="admin-empty-state">请选择会话查看详情。</div>
+                ) : (
+                  <>
+                    <ConversationSummarySection
+                      summary={summary}
+                      loading={summaryLoading}
+                      error={summaryError}
+                      collapsed={summaryCollapsed}
+                      onToggle={() => setSummaryCollapsed((prev) => !prev)}
+                      onRetry={() => void runSummary()}
+                    />
+                    {loadingDetail ? (
+                      <div className="admin-empty-state">正在加载会话详情...</div>
+                    ) : detail ? (
+                      <div className="admin-detail-stack">
+                        <div className="admin-detail-meta">
+                          <span>{formatUserName(detail.student)}</span>
+                          <span>创建：{formatDate(detail.created_at)}</span>
+                          <span>更新：{formatDate(detail.updated_at)}</span>
+                        </div>
+                        <div className="admin-message-list" aria-label="会话消息">
+                          {detail.history.length === 0 ? (
+                            <div className="admin-empty-state">该会话暂无消息内容。</div>
+                          ) : (
+                            detail.history.map((message, index) => (
+                              <ConversationMessage message={message} index={index} key={`${message.role}-${index}`} />
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="admin-empty-state">暂无详情。</div>
+                    )}
+                  </>
+                )}
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -310,4 +386,58 @@ function formatSize(size: number | undefined) {
 
 function formatError(err: unknown) {
   return err instanceof Error ? err.message : "请求失败";
+}
+
+function ConversationSummarySection({
+  summary,
+  loading,
+  error,
+  collapsed,
+  onToggle,
+  onRetry,
+}: {
+  summary: { summary: string; sampled_count: number; total_count: number } | null;
+  loading: boolean;
+  error: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  onRetry: () => void;
+}) {
+  if (!summary && !loading && !error) {
+    return (
+      <div className="admin-empty-state" style={{ minHeight: 80 }}>
+        点击右上角「AI 速览」生成此会话摘要。
+      </div>
+    );
+  }
+  return (
+    <div className="admin-summary-panel">
+      <div className="admin-summary-panel-head">
+        <span>AI 速览</span>
+        <div className="admin-summary-panel-actions">
+          {summary ? (
+            <button className="admin-link-button" type="button" onClick={onToggle}>
+              {collapsed ? "展开" : "收起"}
+            </button>
+          ) : null}
+          <button className="admin-link-button" type="button" onClick={onRetry} disabled={loading}>
+            重新生成
+          </button>
+        </div>
+      </div>
+      {error ? <div className="admin-error">{error}</div> : null}
+      {loading ? (
+        <div className="admin-summary-panel-meta">正在生成速览...</div>
+      ) : summary ? (
+        <>
+          {!collapsed ? (
+            <div className="admin-summary-panel-body">{summary.summary}</div>
+          ) : null}
+          <div className="admin-summary-panel-meta">
+            基于 {summary.sampled_count} / {summary.total_count} 条消息
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }

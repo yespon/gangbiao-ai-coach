@@ -1820,6 +1820,9 @@ textarea {
 }
 
 .admin-conversation-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
   padding: 14px;
   background: #fff;
@@ -1930,6 +1933,77 @@ textarea {
   flex: 0 0 auto;
   color: #64748b;
   font-weight: 700;
+}
+
+.admin-summary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.admin-summary-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.admin-summary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-summary-panel {
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.admin-summary-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-summary-panel-body {
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-summary-panel-meta {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-summary-panel-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.admin-dialog-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .admin-pagination {
