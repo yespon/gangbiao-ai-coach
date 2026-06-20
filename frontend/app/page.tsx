@@ -507,7 +507,9 @@ export default function HomePage() {
                   const picked = Array.from(e.target.files || []);
                   if (picked.length > 0) {
                     if (files.length > 0) {
-                      setError("仅支持上传 1 个附件，已替换为新文件");
+                      setError("当前场景仅支持上传 1 个附件，可删除后替换新文件");
+                      e.target.value = "";
+                      return;
                     }
                     setFiles([picked[0]]);
                   }
