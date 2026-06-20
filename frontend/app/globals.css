@@ -261,6 +261,11 @@ body {
   min-width: 130px;
 }
 
+.session-context-menu.above {
+  top: auto;
+  bottom: 100%;
+}
+
 .session-context-menu button {
   display: flex;
   align-items: center;

@@ -29,6 +29,7 @@ export default function HomePage() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
   const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+  const [contextMenuAbove, setContextMenuAbove] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -367,14 +368,20 @@ export default function HomePage() {
                   className="session-menu-trigger"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setContextMenuId(contextMenuId === item.session_id ? null : item.session_id);
+                    if (contextMenuId === item.session_id) {
+                      setContextMenuId(null);
+                    } else {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setContextMenuAbove(window.innerHeight - rect.bottom < 160);
+                      setContextMenuId(item.session_id);
+                    }
                   }}
                   aria-label="会话操作"
                 >
                   ⋯
                 </button>
                 {contextMenuId === item.session_id ? (
-                  <div className="session-context-menu">
+                  <div className={`session-context-menu ${contextMenuAbove ? "above" : ""}`}>
                     <button type="button" onClick={() => startRename(item)}>
                       ✏️ 重命名
                     </button>
