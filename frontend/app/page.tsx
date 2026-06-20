@@ -459,10 +459,12 @@ export default function HomePage() {
               <input
                 id="chat-file-input"
                 type="file"
-                multiple
                 onChange={(e) => {
                   const picked = Array.from(e.target.files || []);
-                  setFiles((prev) => mergeFiles(prev, picked));
+                  if (picked.length > 0) {
+                    // Only allow 1 file at a time
+                    setFiles([picked[0]]);
+                  }
                   e.target.value = "";
                 }}
                 disabled={busy && !streamingDraft}
