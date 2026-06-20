@@ -65,6 +65,16 @@ export default function HomePage() {
     syncComposerHeight();
   }, [message]);
 
+  // Close context menu on click-outside
+  useEffect(() => {
+    if (!contextMenuId) return;
+    function handleClickOutside() {
+      setContextMenuId(null);
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [contextMenuId]);
+
   const renderedMessages = useMemo(() => {
     const rows = [...history];
     if (streamingDraft) {
@@ -147,7 +157,13 @@ export default function HomePage() {
       await togglePinSession(sid);
       await refreshSessions();
     } catch (err) {
+      // AbortError / network blip — refresh anyway to sync state
+      if (err instanceof DOMException && err.name === "AbortError") {
+        await refreshSessions();
+        return;
+      }
       setError(formatError(err));
+      await refreshSessions();
     }
   }
 

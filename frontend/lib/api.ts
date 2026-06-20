@@ -162,7 +162,6 @@ export async function renameSession(sessionId: string, title: string): Promise<{
 export async function togglePinSession(sessionId: string): Promise<{ session_id: string; pinned: boolean }> {
   const response = await authFetch(endpoint(`/api/v1/sessions/${sessionId}/pin`), {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
   });
   if (!response.ok) {
     throw new Error(`Pin session failed: ${response.status}`);
