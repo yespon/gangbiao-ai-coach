@@ -30,11 +30,23 @@ export default function AdminOverviewPage() {
   }, []);
 
   const modules = useMemo<OverviewModule[]>(() => {
-    if (user?.is_admin) {
+    const role = user?.primary_role;
+    if (role === "coach") {
       return [
         {
           title: "对话历史",
-          description: "按角色范围查看学员会话，支持会话回放与内容审阅。",
+          description: "查看你负责学员的历史会话与辅导轨迹。",
+          href: "/admin/conversations",
+        },
+      ];
+    }
+    if (role === "admin") {
+      return [
+        {
+          title: "对话历史",
+          description: user?.is_coach
+            ? "默认查看我的学员会话，可切换全部；支持会话回放与内容审阅。"
+            : "查看全部学员会话，支持会话回放与内容审阅。",
           href: "/admin/conversations",
         },
         {
@@ -44,17 +56,8 @@ export default function AdminOverviewPage() {
         },
         {
           title: "意见反馈",
-          description: "查看用户提交的意见与建议,支持状态流转与附件预览。",
+          description: "查看用户提交的意见与建议，支持状态流转与附件预览。",
           href: "/admin/feedback",
-        },
-      ];
-    }
-    if (user?.is_coach) {
-      return [
-        {
-          title: "对话历史",
-          description: "查看你负责学员的历史会话与辅导轨迹。",
-          href: "/admin/conversations",
         },
       ];
     }
@@ -66,7 +69,7 @@ export default function AdminOverviewPage() {
       <section className="admin-hero-card">
         <p className="admin-kicker">Overview</p>
         <h2>后台概览</h2>
-        <p>根据角色显示可用模块入口，保持管理员与岗位负责人权限边界清晰。</p>
+        <p>根据角色显示可用模块入口。</p>
       </section>
 
       {loading ? (
