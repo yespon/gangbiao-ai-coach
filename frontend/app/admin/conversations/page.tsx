@@ -157,7 +157,7 @@ export default function AdminConversationsPage() {
         <div>
           <p className="admin-kicker">Conversation Archive</p>
           <h2>对话历史</h2>
-          <p>按角色权限查看历史会话。管理员可切换全部/我的学员，岗位负责人仅查看负责学员。</p>
+          <p>查看你负责学员的历史会话与辅导轨迹。</p>
         </div>
         <div className="admin-segmented" role="group" aria-label="对话范围">
           <button className={scope === "mine" ? "active" : ""} type="button" onClick={() => void changeScope("mine")} disabled={loadingUsers}>
