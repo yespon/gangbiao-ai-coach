@@ -424,7 +424,7 @@ export default function HomePage() {
             )}
             {showUserMenu && !sidebarCollapsed && (
               <div className="user-popover">
-                {userInfo?.is_admin ? (
+                {userInfo?.is_admin || userInfo?.is_coach ? (
                   <button type="button" onClick={() => { window.location.href = "/admin"; }}>
                     管理后台
                   </button>
