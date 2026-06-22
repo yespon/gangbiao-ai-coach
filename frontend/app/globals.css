@@ -181,6 +181,7 @@ body {
   gap: 8px;
   overflow: auto;
   min-height: 0;
+  flex: 1;
   padding-right: 4px;
 }
 
