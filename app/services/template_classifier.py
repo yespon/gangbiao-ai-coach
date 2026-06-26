@@ -8,9 +8,12 @@ call at temperature 0, and a tolerant JSON parser.
 
 import json
 import re
+from io import BytesIO
 from typing import Any
 
 import httpx
+import xlrd
+from openpyxl import load_workbook
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -120,3 +123,94 @@ def parse_classification(raw: str | None) -> ClassificationResult:
         )
 
     return _coerce(obj)
+
+
+def _normalize_cell(value: Any) -> str:
+    """Normalize a raw cell value to the string form used for classification.
+
+    Float integers (e.g. 5.0) become "5"; everything else is str()'d with
+    only leading/trailing whitespace trimmed (internal spaces preserved so
+    merged-cell fingerprints survive).
+    """
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _format_cells(
+    rows: int, cols: int, cells: list[tuple[int, int, str]]
+) -> str:
+    lines = [f"文件尺寸：{rows}行 × {cols}列", "单元格内容（[行,列] 内容）："]
+    lines.extend(f"[{r},{c}] {v}" for r, c, v in cells)
+    return "\n".join(lines)
+
+
+def _collect_xlsx(
+    raw_bytes: bytes,
+) -> tuple[int, int, list[tuple[int, int, str]]]:
+    """Return (rows, cols, non-empty [(row, col, value)]) for the first
+    non-empty worksheet. Merged non-anchor cells read as None and are
+    skipped, so only the merged top-left value appears (no fill).
+    """
+    wb = load_workbook(filename=BytesIO(raw_bytes), data_only=False, read_only=False)
+
+    sheet = None
+    for ws in wb.worksheets:
+        if any(cell.value not in (None, "") for row in ws.iter_rows() for cell in row):
+            sheet = ws
+            break
+    if sheet is None:
+        sheet = wb.worksheets[0]
+
+    rows = sheet.max_row or 0
+    cols = sheet.max_column or 0
+    cells: list[tuple[int, int, str]] = []
+    for r in range(1, rows + 1):
+        for c in range(1, cols + 1):
+            value = sheet.cell(row=r, column=c).value
+            if value in (None, ""):
+                continue
+            normalized = _normalize_cell(value)
+            if normalized:
+                cells.append((r, c, normalized))
+    return rows, cols, cells
+
+
+def _collect_xls(
+    raw_bytes: bytes,
+) -> tuple[int, int, list[tuple[int, int, str]]]:
+    """Same shape as _collect_xlsx but for legacy .xls via xlrd.
+
+    xlrd reads merged non-anchor cells as '' (empty), so only the merged
+    top-left value appears naturally.
+    """
+    book = xlrd.open_workbook(file_contents=raw_bytes)
+    sheet = book.sheets()[0]
+    rows = sheet.nrows
+    cols = sheet.ncols
+    cells: list[tuple[int, int, str]] = []
+    for r in range(rows):
+        for c in range(cols):
+            value = sheet.cell_value(r, c)
+            if value in (None, ""):
+                continue
+            normalized = _normalize_cell(value)
+            if normalized:
+                cells.append((r + 1, c + 1, normalized))  # 1-based for output
+    return rows, cols, cells
+
+
+def extract_cells_for_classification(raw_bytes: bytes, ext: str) -> str:
+    """Extract an Excel file into the prompt's expected input format.
+
+    ``ext`` is the lowercased file extension including the dot, e.g. ".xlsx".
+    Raises RuntimeError for unsupported extensions.
+    """
+    ext = (ext or "").lower()
+    if ext == ".xlsx":
+        rows, cols, cells = _collect_xlsx(raw_bytes)
+    elif ext == ".xls":
+        rows, cols, cells = _collect_xls(raw_bytes)
+    else:
+        raise RuntimeError(f"不支持的文件扩展名: {ext!r}（仅支持 .xlsx / .xls）")
+    return _format_cells(rows, cols, cells)
