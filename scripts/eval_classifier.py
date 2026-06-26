@@ -57,8 +57,8 @@ def load_cases(cases_dir: str, labels_path: str) -> list[tuple[str, str, Path]]:
 async def run_one(fname: str, expected: str, path: Path) -> dict:
     """Classify one case file. Never raises — errors become a predicted 'ERROR'."""
     ext = path.suffix.lower()
-    raw = path.read_bytes()
     try:
+        raw = path.read_bytes()
         result = await classify_file(raw, ext)
         return {
             "file": fname,
