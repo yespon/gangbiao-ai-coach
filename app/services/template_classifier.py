@@ -214,3 +214,54 @@ def extract_cells_for_classification(raw_bytes: bytes, ext: str) -> str:
     else:
         raise RuntimeError(f"不支持的文件扩展名: {ext!r}（仅支持 .xlsx / .xls）")
     return _format_cells(rows, cols, cells)
+
+
+async def _call_llm_json(messages: list[dict[str, str]]) -> str:
+    """One-shot LLM call returning the raw message content (temperature 0).
+
+    Raises RuntimeError if the API key is missing or the response is an error.
+    """
+    api_key = settings.openai_api_key.strip()
+    if not api_key:
+        raise RuntimeError("未配置 OPENAI_API_KEY，无法调用模板分类器")
+
+    model = settings.openai_model
+    base_url = settings.openai_base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    payload = {"model": model, "messages": messages, "temperature": 0}
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(url, json=payload, headers=headers)
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"LLM 调用失败: {response.status_code} {response.text}"
+            )
+        data = response.json()
+
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"LLM 返回无 choices: {data}")
+    content = choices[0].get("message", {}).get("content")
+    return content or ""
+
+
+async def classify_text(text: str) -> ClassificationResult:
+    """Classify pre-extracted cell text into a template."""
+    messages = [
+        {"role": "system", "content": CLASSIFIER_PROMPT},
+        {"role": "user", "content": text},
+    ]
+    raw = await _call_llm_json(messages)
+    return parse_classification(raw)
+
+
+async def classify_file(raw_bytes: bytes, ext: str) -> ClassificationResult:
+    """Extract an Excel file and classify it."""
+    text = extract_cells_for_classification(raw_bytes, ext)
+    return await classify_text(text)
+
+
+def predicted_label(result: ClassificationResult) -> str:
+    """Map a result to an eval label: the document_id, or 'NONE' when unmatched."""
+    return result.document_id if result.document_id else "NONE"

@@ -145,3 +145,70 @@ def test_extract_uses_first_non_empty_worksheet():
     wb.save(buf)
     text = extract_cells_for_classification(buf.getvalue(), ".xlsx")
     assert "[1,1] 岗位名称" in text
+
+
+@pytest.mark.asyncio
+async def test_classify_text_sends_prompt_and_parses_result(monkeypatch):
+    captured = {}
+
+    async def fake_call(messages):
+        captured["messages"] = messages
+        return (
+            '{"matched": true, "document_id": "D1", "version": "多等级版", '
+            '"stage": "阶段一【岗位价值和岗位任务】", "confidence": 0.97, '
+            '"matched_signals": ["s1"], "reason": "ok"}'
+        )
+
+    monkeypatch.setattr(svc, "_call_llm_json", fake_call)
+
+    result = await svc.classify_text(
+        "文件尺寸：1行 × 1列\n单元格内容（[行,列] 内容）：\n[1,1] 岗位名称"
+    )
+
+    assert captured["messages"][0]["role"] == "system"
+    assert captured["messages"][0]["content"] == svc.CLASSIFIER_PROMPT
+    assert captured["messages"][1]["role"] == "user"
+    assert "岗位名称" in captured["messages"][1]["content"]
+    assert result.document_id == "D1"
+    assert result.matched is True
+
+
+@pytest.mark.asyncio
+async def test_classify_file_extracts_then_classifies(monkeypatch):
+    captured = {}
+
+    async def fake_call(messages):
+        captured["user"] = messages[-1]["content"]
+        return (
+            '{"matched": true, "document_id": "D4", "version": "通用版", '
+            '"stage": "阶段四【关键活动工作分解表】", "confidence": 0.95, '
+            '"matched_signals": [], "reason": "ok"}'
+        )
+
+    monkeypatch.setattr(svc, "_call_llm_json", fake_call)
+
+    def setup(ws):
+        ws["A1"] = "关键活动名称"
+        ws["B1"] = "列为关键活动的理由"
+
+    result = await svc.classify_file(_save_xlsx(setup), ".xlsx")
+
+    assert "文件尺寸" in captured["user"]
+    assert "关键活动名称" in captured["user"]
+    assert result.document_id == "D4"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_json_raises_without_api_key(monkeypatch):
+    monkeypatch.setattr(svc.settings, "openai_api_key", "")
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        await svc._call_llm_json([{"role": "user", "content": "x"}])
+
+
+def test_predicted_label_returns_document_id_or_none():
+    assert svc.predicted_label(
+        ClassificationResult(matched=True, document_id="D1")
+    ) == "D1"
+    assert svc.predicted_label(
+        ClassificationResult(matched=False, document_id=None)
+    ) == "NONE"
