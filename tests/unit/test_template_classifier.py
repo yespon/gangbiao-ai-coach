@@ -205,6 +205,20 @@ async def test_call_llm_json_raises_without_api_key(monkeypatch):
         await svc._call_llm_json([{"role": "user", "content": "x"}])
 
 
+def test_parse_leading_json_with_trailing_prose_containing_stray_brace():
+    # A valid leading object followed by prose that itself contains a '}'.
+    # The greedy {.*} regex would swallow the prose and fail; raw_decode
+    # parses the leading object and ignores the rest.
+    raw = (
+        '{"matched": true, "document_id": "D1", "confidence": 0.9, '
+        '"matched_signals": [], "reason": "ok"} some prose with a } stray'
+    )
+    r = parse_classification(raw)
+    assert r.document_id == "D1"
+    assert r.matched is True
+    assert r.error is None
+
+
 def test_predicted_label_returns_document_id_or_none():
     assert svc.predicted_label(
         ClassificationResult(matched=True, document_id="D1")

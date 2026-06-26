@@ -78,6 +78,8 @@ def parse_classification(raw: str | None) -> ClassificationResult:
 
     Tolerant of ```json fences and surrounding prose. Never raises — on
     parse failure returns a result with ``matched=False`` and an ``error``.
+    Uses raw_decode so a leading JSON object followed by trailing prose
+    (even prose containing a stray ``}``) is still parsed correctly.
     """
     text = (raw or "").strip()
 
@@ -86,33 +88,26 @@ def parse_classification(raw: str | None) -> ClassificationResult:
     if fenced:
         text = fenced.group(1).strip()
 
-    # If there's still leading/trailing prose, grab the outermost {...} block.
-    if not text.startswith("{"):
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            text = match.group(0)
+    # Parse the leading JSON object starting at the first '{', ignoring any
+    # trailing prose (raw_decode stops at the object's closing brace).
+    brace = text.find("{")
+    if brace == -1:
+        return ClassificationResult(
+            matched=False,
+            document_id=None,
+            reason="解析失败: 未找到 JSON 对象",
+            error="no JSON object found",
+        )
 
     try:
-        obj = json.loads(text)
-    except Exception:  # noqa: BLE001 — fall back to extracting the {...} block
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                obj = json.loads(match.group(0))
-            except Exception as exc:  # noqa: BLE001 — any parse failure is a handled error
-                return ClassificationResult(
-                    matched=False,
-                    document_id=None,
-                    reason=f"解析失败: {exc}",
-                    error=str(exc),
-                )
-        else:
-            return ClassificationResult(
-                matched=False,
-                document_id=None,
-                reason="解析失败: 未找到 JSON 对象",
-                error="no JSON object found",
-            )
+        obj, _ = json.JSONDecoder().raw_decode(text[brace:])
+    except Exception as exc:  # noqa: BLE001 — any parse failure is a handled error
+        return ClassificationResult(
+            matched=False,
+            document_id=None,
+            reason=f"解析失败: {exc}",
+            error=str(exc),
+        )
 
     if not isinstance(obj, dict):
         return ClassificationResult(

@@ -145,8 +145,11 @@ def compute_metrics(results: list[dict]) -> dict:
     total = len(results)
     correct = sum(1 for r in results if r["predicted"] == r["expected"])
     accuracy = correct / total if total else 0.0
-    # Macro-F1 averages over classes that actually appear (support > 0),
-    # matching sklearn's default behavior for the perfect-prediction case.
+    # Macro-F1 averaged over classes that actually appear in the labels
+    # (support > 0). For small eval sets this is more meaningful than
+    # averaging over all 8 labels (which would drag macro-F1 toward 0 by
+    # including never-true classes with F1=0). Note: this differs from
+    # sklearn's f1_score(average='macro'), which includes all labels.
     supported = [c for c in per_class.values() if c["support"] > 0]
     macro_f1 = sum(c["f1"] for c in supported) / len(supported) if supported else 0.0
 
