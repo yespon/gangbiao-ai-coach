@@ -7,15 +7,17 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import LOGGER, get_current_user_id
+from app.core.config import BASE_DIR, settings
 from app.core.database import get_db
 from app.extractors.manager import _save_attachments
 from app.models.chat import ChatMessage, ChatSession
 from app.services.chat_service import _append_user_message_with_attachments, _finalize_stream_reply
+from app.services.context_service import load_master_messages
 from app.services.llm_service import _build_model_messages, _call_llm, _call_llm_stream
 from app.services.message_service import append_message
 from app.services.session_service import SESSION_CACHE, _session_history_for_client, get_session_by_id, rebuild_memory_session
-from app.core.config import settings
 from app.services.sse_service import build_delta_event, build_error_event, format_sse_event
+from app.services.template_prompt_service import resolve_master
 
 router = APIRouter()
 
@@ -80,6 +82,25 @@ async def _get_or_load_session(session_id: str, user_id: str, db: AsyncSession |
     return None
 
 
+async def _resolve_master_messages(
+    user_msg: ChatMessage,
+    logger,
+) -> list[ChatMessage]:
+    """Resolve the master prompt for this turn. Raises HTTPException on
+    intercept; returns master message list (intercepts if load yields empty)."""
+    resolution = await resolve_master(user_msg.attachments, BASE_DIR)
+    if resolution.status == "intercept":
+        logger.info("template_intercept reason={}", resolution.reason)
+        raise HTTPException(status_code=400, detail=resolution.intercept_message)
+    master_messages = load_master_messages(resolution.master_path, logger)
+    if not master_messages:
+        logger.error("master_load_empty path={}", resolution.master_path)
+        raise HTTPException(
+            status_code=400, detail="模板母版加载失败，请联系管理员"
+        )
+    return master_messages
+
+
 @router.post("/chat")
 async def chat(
     session_id: str = Form(...),
@@ -104,7 +125,8 @@ async def chat(
         log_event="chat_request_received attachments={} has_text={}",
     )
 
-    llm_messages = _build_model_messages(session, user_msg)
+    master_messages = await _resolve_master_messages(user_msg, chat_logger)
+    llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(chat_logger, llm_messages, user_msg)
     assistant_text = await _call_llm(llm_messages)
 
@@ -149,7 +171,8 @@ async def chat_stream(
         request_logger=stream_logger,
         log_event="chat_stream_request_received attachments={} has_text={}",
     )
-    llm_messages = _build_model_messages(session, user_msg)
+    master_messages = await _resolve_master_messages(user_msg, stream_logger)
+    llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(stream_logger, llm_messages, user_msg)
 
     async def event_gen() -> AsyncIterator[str]:
