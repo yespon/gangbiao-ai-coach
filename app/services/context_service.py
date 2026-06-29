@@ -85,22 +85,30 @@ def _compact_metadata_summary(meta: dict[str, Any] | None) -> dict[str, Any]:
     return summary
 
 
-def load_default_context_messages(context_file: Path, logger) -> list[ChatMessage]:
-    if not context_file.exists():
-        logger.warning("Default context file not found: {}", context_file)
-        return []
+def load_master_messages(master_path: Path, logger) -> list[ChatMessage]:
+    """Load a master prompt (OpenAI chat history JSON) as context messages.
 
-    raw = json.loads(context_file.read_text(encoding="utf-8"))
-    messages: list[ChatMessage] = []
+    Returns [] when the file is missing or unparseable, so callers can
+    intercept (HTTP 400) instead of crashing on a corrupt master.
+    """
+    if not master_path.exists():
+        logger.warning("Master file not found: {}", master_path)
+        return []
+    try:
+        raw = json.loads(master_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Master file unparseable {}: {}", master_path, exc)
+        return []
 
     header = {
         "version": raw.get("version"),
         "format": raw.get("format"),
         "generated_at": raw.get("generated_at"),
-        "source_file": context_file.name,
+        "source_file": master_path.name,
     }
-    logger.info("Default context metadata loaded: {}", json.dumps(header, ensure_ascii=False))
+    logger.info("Master metadata loaded: {}", json.dumps(header, ensure_ascii=False))
 
+    messages: list[ChatMessage] = []
     for item in raw.get("messages", []):
         role = item.get("role", "user")
         content = item.get("content", "")
@@ -121,8 +129,12 @@ def load_default_context_messages(context_file: Path, logger) -> list[ChatMessag
                 attachments=attachments,
             )
         )
-
     return messages
+
+
+def load_default_context_messages(context_file: Path, logger) -> list[ChatMessage]:
+    """Backward-compatible wrapper: load the default (D5) master as context."""
+    return load_master_messages(context_file, logger)
 
 
 def load_materials_context_messages(
