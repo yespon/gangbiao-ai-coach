@@ -6,18 +6,26 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession
+from app.services.context_service import _clone_context_messages
+
+_DEFAULT_SYSTEM = (
+    "你是岗位标准化 AI 教练。"
+    "请在回答中保持教练式引导，优先围绕用户提供的上下文和材料。"
+)
 
 
-def _build_model_messages(session: ChatSession, user_msg: ChatMessage) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = [
-        {
-            "role": "system",
-            "content": (
-                "你是岗位标准化 AI 教练。"
-                "请在回答中保持教练式引导，优先围绕用户提供的上下文和材料。"
-            ),
-        }
-    ]
+def _build_model_messages(
+    session: ChatSession,
+    user_msg: ChatMessage,
+    master_messages: list[ChatMessage] | None = None,
+) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+
+    if master_messages is not None:
+        for m in _clone_context_messages(master_messages):
+            messages.append({"role": m.role, "content": m.content})
+    else:
+        messages.append({"role": "system", "content": _DEFAULT_SYSTEM})
 
     for msg in session.messages:
         if msg.role not in {"system", "user", "assistant"}:

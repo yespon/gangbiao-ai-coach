@@ -51,3 +51,41 @@ def test_build_model_messages_passes_user_content_verbatim():
     current_user = messages[-1]["content"]
 
     assert current_user == content_with_hint, "content should be passed through verbatim"
+
+
+def _session():
+    s = ChatSession(session_id="s1", show_context_in_history=False, context_file="ctx.json")
+    s.messages.append(ChatMessage(role="user", content="历史问题"))
+    return s
+
+
+def test_build_model_messages_with_master_prefix_replaces_system_line():
+    session = _session()
+    user_msg = ChatMessage(role="user", content="当前问题")
+    session.messages.append(user_msg)
+
+    master = [
+        ChatMessage(role="system", content="母版system", is_context=True),
+        ChatMessage(role="user", content="母版user", is_context=True),
+        ChatMessage(role="assistant", content="母版assistant", is_context=True),
+    ]
+    msgs = _build_model_messages(session, user_msg, master_messages=master)
+
+    # master messages come first, verbatim
+    assert msgs[0] == {"role": "system", "content": "母版system"}
+    assert msgs[1] == {"role": "user", "content": "母版user"}
+    assert msgs[2] == {"role": "assistant", "content": "母版assistant"}
+    # hardcoded system line must NOT appear
+    assert "岗位标准化 AI 教练" not in "".join(m["content"] for m in msgs)
+    # current user msg is last
+    assert msgs[-1] == {"role": "user", "content": "当前问题"}
+
+
+def test_build_model_messages_none_master_falls_back_to_hardcoded_system():
+    session = _session()
+    user_msg = ChatMessage(role="user", content="当前问题")
+    session.messages.append(user_msg)
+
+    msgs = _build_model_messages(session, user_msg, master_messages=None)
+    assert msgs[0]["role"] == "system"
+    assert "岗位标准化 AI 教练" in msgs[0]["content"]
