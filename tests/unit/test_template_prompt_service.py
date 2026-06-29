@@ -49,3 +49,123 @@ def test_get_master_path_missing_returns_none(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "MASTER_DIR", tmp_path)
     svc._build_registry()
     assert svc.get_master_path("D3") is None
+
+
+import asyncio
+import pytest
+from app.services.template_classifier import ClassificationResult
+
+
+def _att(filename, saved_path):
+    return {"filename": filename, "saved_path": saved_path, "size": 10, "excerpt": ""}
+
+
+@pytest.fixture
+def master_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(svc, "MASTER_DIR", tmp_path)
+    for did in ["_generic", "D1", "D2", "D3", "D4", "D5", "D6", "D7"]:
+        (tmp_path / f"{did}.history.json").write_text("{}", encoding="utf-8")
+    svc._build_registry()
+    return tmp_path
+
+
+def _patch_classify(monkeypatch, results):
+    """results: list of ClassificationResult returned in order, one per file."""
+    calls = {"n": 0}
+
+    async def fake_classify(raw_bytes, ext):
+        i = calls["n"]
+        calls["n"] += 1
+        return results[i]
+    monkeypatch.setattr(svc, "classify_file", fake_classify)
+
+
+def test_resolve_no_attachments_returns_generic(master_dir):
+    r = asyncio.run(svc.resolve_master([], svc.MASTER_DIR.parent))
+    assert r.status == "ok"
+    assert r.document_id is None
+    assert r.master_path == master_dir / "_generic.history.json"
+
+
+def test_resolve_non_excel_intercepts(master_dir, tmp_path, monkeypatch):
+    xlsx = tmp_path / "a.pdf"
+    xlsx.write_bytes(b"%PDF")
+    _patch_classify(monkeypatch, [])
+    r = asyncio.run(svc.resolve_master([_att("a.pdf", str(xlsx))], tmp_path))
+    assert r.status == "intercept"
+    assert "Excel" in r.intercept_message
+
+
+def test_resolve_single_excel_ok(master_dir, tmp_path, monkeypatch):
+    xlsx = tmp_path / "a.xlsx"
+    xlsx.write_bytes(b"PK")
+    _patch_classify(monkeypatch, [ClassificationResult(matched=True, document_id="D5")])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(xlsx))], tmp_path))
+    assert r.status == "ok"
+    assert r.document_id == "D5"
+    assert r.master_path == master_dir / "D5.history.json"
+
+
+def test_resolve_unmatched_intercepts(master_dir, tmp_path, monkeypatch):
+    xlsx = tmp_path / "a.xlsx"
+    xlsx.write_bytes(b"PK")
+    _patch_classify(monkeypatch, [ClassificationResult(matched=False, document_id=None)])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(xlsx))], tmp_path))
+    assert r.status == "intercept"
+    assert "未识别" in r.intercept_message
+
+
+def test_resolve_classifier_raises_intercepts(master_dir, tmp_path, monkeypatch):
+    xlsx = tmp_path / "a.xlsx"
+    xlsx.write_bytes(b"PK")
+
+    async def boom(raw, ext):
+        raise RuntimeError("LLM down")
+    monkeypatch.setattr(svc, "classify_file", boom)
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(xlsx))], tmp_path))
+    assert r.status == "intercept"
+    assert "未识别" in r.intercept_message
+
+
+def test_resolve_multi_different_templates_intercepts(master_dir, tmp_path, monkeypatch):
+    f1 = tmp_path / "a.xlsx"; f1.write_bytes(b"PK")
+    f2 = tmp_path / "b.xlsx"; f2.write_bytes(b"PK")
+    _patch_classify(monkeypatch, [
+        ClassificationResult(matched=True, document_id="D5"),
+        ClassificationResult(matched=True, document_id="D7"),
+    ])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(f1)), _att("b.xlsx", str(f2))], tmp_path))
+    assert r.status == "intercept"
+    assert "多份" in r.intercept_message
+
+
+def test_resolve_multi_same_template_ok(master_dir, tmp_path, monkeypatch):
+    f1 = tmp_path / "a.xlsx"; f1.write_bytes(b"PK")
+    f2 = tmp_path / "b.xlsx"; f2.write_bytes(b"PK")
+    _patch_classify(monkeypatch, [
+        ClassificationResult(matched=True, document_id="D4"),
+        ClassificationResult(matched=True, document_id="D4"),
+    ])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(f1)), _att("b.xlsx", str(f2))], tmp_path))
+    assert r.status == "ok"
+    assert r.document_id == "D4"
+
+
+def test_resolve_master_file_missing_intercepts(tmp_path, monkeypatch):
+    # registry missing D3 file
+    monkeypatch.setattr(svc, "MASTER_DIR", tmp_path)
+    (tmp_path / "_generic.history.json").write_text("{}", encoding="utf-8")
+    svc._build_registry()
+    xlsx = tmp_path / "a.xlsx"; xlsx.write_bytes(b"PK")
+    _patch_classify(monkeypatch, [ClassificationResult(matched=True, document_id="D3")])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(xlsx))], tmp_path))
+    assert r.status == "intercept"
+    assert "母版尚未配置" in r.intercept_message
+
+
+def test_resolve_read_bytes_fail_intercepts(master_dir, tmp_path, monkeypatch):
+    # saved_path points to nonexistent file
+    _patch_classify(monkeypatch, [])
+    r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(tmp_path / "nope.xlsx"))], tmp_path))
+    assert r.status == "intercept"
+    assert "读取失败" in r.intercept_message
