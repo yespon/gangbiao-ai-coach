@@ -69,13 +69,28 @@ def _intercept(message: str, reason: str = "") -> Resolution:
     return Resolution(status="intercept", intercept_message=message, reason=reason)
 
 
-async def resolve_master(attachments: list[dict], base_dir: Path) -> Resolution:
+async def resolve_master(
+    attachments: list[dict],
+    base_dir: Path,
+    current_template_id: str | None = None,
+) -> Resolution:
     """Decide which master to load for this turn based on attachments.
 
     attachments: items from _save_attachments (saved_path relative to base_dir
-    or absolute). Returns ok+master_path or intercept+message.
+    or absolute). current_template_id: the session's last-recognized template
+    (D1..D7); reused on a no-attachment turn so a text follow-up keeps the
+    same template instead of falling back to _generic. Returns ok+master_path
+    or intercept+message.
     """
     if not attachments:
+        # Reuse the session's current template when present; otherwise generic.
+        path = get_master_path(current_template_id)
+        if path is not None:
+            return Resolution(
+                status="ok", master_path=path, document_id=current_template_id
+            )
+        # current_template_id was None/invalid (or its master file is missing)
+        # → fall back to the generic master.
         path = get_master_path(None)
         if path is None:
             return _intercept(_MSG_MASTER_MISSING, "generic master missing")

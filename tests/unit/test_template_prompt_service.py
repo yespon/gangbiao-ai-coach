@@ -169,3 +169,31 @@ def test_resolve_read_bytes_fail_intercepts(master_dir, tmp_path, monkeypatch):
     r = asyncio.run(svc.resolve_master([_att("a.xlsx", str(tmp_path / "nope.xlsx"))], tmp_path))
     assert r.status == "intercept"
     assert "读取失败" in r.intercept_message
+
+
+def test_resolve_no_attachments_with_current_template_returns_existing(master_dir):
+    """会话已有 current_template="D5" 时，无附件消息沿用 D5（不回退通用母版）。"""
+    r = asyncio.run(svc.resolve_master([], svc.MASTER_DIR.parent, current_template_id="D5"))
+    assert r.status == "ok"
+    assert r.document_id == "D5"
+    assert r.master_path == master_dir / "D5.history.json"
+
+
+def test_resolve_no_attachments_current_template_none_returns_generic(master_dir):
+    """current_template 为 None（新会话/通用态）时，无附件消息用通用母版（向后兼容）。"""
+    r = asyncio.run(svc.resolve_master([], svc.MASTER_DIR.parent, current_template_id=None))
+    assert r.status == "ok"
+    assert r.document_id is None
+    assert r.master_path == master_dir / "_generic.history.json"
+
+
+def test_resolve_no_attachments_current_template_missing_falls_back_generic(tmp_path, monkeypatch):
+    """current_template 指向的母版文件缺失时，无附件回退通用母版（不拦截）。"""
+    # registry has _generic but NOT D3
+    monkeypatch.setattr(svc, "MASTER_DIR", tmp_path)
+    (tmp_path / "_generic.history.json").write_text("{}", encoding="utf-8")
+    svc._build_registry()
+    r = asyncio.run(svc.resolve_master([], tmp_path, current_template_id="D3"))
+    assert r.status == "ok"
+    assert r.document_id is None
+    assert r.master_path == tmp_path / "_generic.history.json"

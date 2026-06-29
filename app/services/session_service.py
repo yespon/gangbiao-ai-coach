@@ -1,7 +1,7 @@
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import selectinload
 
 from app.models.db_models import ChatSessionDB, ChatMessageDB
@@ -114,6 +114,7 @@ def rebuild_memory_session(session_db: ChatSessionDB) -> ChatSession:
         context_file=session_db.context_file or "",
         user_id=str(session_db.user_id),
         created_at=session_db.created_at.isoformat() if session_db.created_at else "",
+        current_template_id=getattr(session_db, "current_template_id", None) or None,
     )
     for msg_db in session_db.messages:
         memory_msg = ChatMessage(
@@ -217,3 +218,16 @@ async def soft_delete_session(
     # Also remove from in-memory cache if present
     SESSION_CACHE.pop(session_id, None)
     return True
+
+
+async def update_session_template(
+    db: AsyncSession, session_id: str, template_id: str
+) -> None:
+    """Persist the current template_id (D1..D7) on a session. Called when
+    classify_file successfully identifies an attachment's template."""
+    await db.execute(
+        sa_update(ChatSessionDB)
+        .where(ChatSessionDB.id == session_id)
+        .values(current_template_id=template_id)
+    )
+    await db.commit()
