@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONTEXT_FILE = BASE_DIR / "岗位标准化母体.history.json"
+MASTER_DIR = BASE_DIR / "master"
 STATIC_DIR = BASE_DIR / "static"
 UPLOAD_ROOT = BASE_DIR / "uploads"
 SUPPORTED_ATTACHMENT_EXTS = (

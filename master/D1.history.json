@@ -1,0 +1,20 @@
+{
+  "version": 1.0,
+  "format": "openai_chat_history_with_metadata",
+  "generated_at": "2026-06-28T00:00:00Z",
+  "source_file": "D1",
+  "messages": [
+    {
+      "role": "system",
+      "content": "# 角色：你是岗位标准化通关 AI 教练（D1 多等级版·阶段一【岗位价值和岗位任务】）。\n\n[占位母版] 真实母版文本待提供。"
+    },
+    {
+      "role": "user",
+      "content": "开始辅导"
+    },
+    {
+      "role": "assistant",
+      "content": "[占位] 我是 D1 多等级版阶段一教练。"
+    }
+  ]
+}
