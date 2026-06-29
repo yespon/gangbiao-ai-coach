@@ -85,12 +85,11 @@ def test_session_history_from_db(client):
 
 
 def test_context_messages_persisted(client):
-    """Context messages should be stored with is_context=True."""
+    """母体不再在会话创建时持久化为 context 消息（改为每轮动态加载）。"""
     resp = client.post("/api/v1/sessions", json={"show_context_in_history": True})
     session_id = resp.json()["session_id"]
 
-    # Fetch session - context messages should appear in history
     resp2 = client.get(f"/api/v1/sessions/{session_id}")
     history = resp2.json()["history"]
     context_msgs = [m for m in history if m.get("is_context")]
-    assert len(context_msgs) >= 1
+    assert context_msgs == []

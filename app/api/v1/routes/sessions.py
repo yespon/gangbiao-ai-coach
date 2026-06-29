@@ -15,7 +15,7 @@ from app.models.schema import (
     SessionSummaryResponse,
     UpdateSessionSettingsRequest,
 )
-from app.services.context_service import load_default_context_messages, load_materials_context_messages
+from app.services.context_service import load_materials_context_messages
 from app.services.session_service import (
     SESSION_CACHE,
     _session_history_for_client,
@@ -71,7 +71,6 @@ async def create_session(
         user_id=user_id,
         created_at=created_at,
     )
-    session.messages.extend(load_default_context_messages(CONTEXT_FILE, LOGGER))
     session.messages.extend(
         load_materials_context_messages(
             supported_attachment_exts=SUPPORTED_ATTACHMENT_EXTS,
