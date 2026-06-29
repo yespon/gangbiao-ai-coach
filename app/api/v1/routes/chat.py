@@ -15,7 +15,7 @@ from app.services.chat_service import _append_user_message_with_attachments, _fi
 from app.services.context_service import load_master_messages
 from app.services.llm_service import _build_model_messages, _call_llm, _call_llm_stream
 from app.services.message_service import append_message
-from app.services.session_service import SESSION_CACHE, _session_history_for_client, get_session_by_id, rebuild_memory_session
+from app.services.session_service import SESSION_CACHE, _session_history_for_client, get_session_by_id, rebuild_memory_session, update_session_template
 from app.services.sse_service import build_delta_event, build_error_event, format_sse_event
 from app.services.template_prompt_service import resolve_master
 
@@ -85,10 +85,14 @@ async def _get_or_load_session(session_id: str, user_id: str, db: AsyncSession |
 async def _resolve_master_messages(
     user_msg: ChatMessage,
     logger,
-) -> list[ChatMessage]:
-    """Resolve the master prompt for this turn. Raises HTTPException on
-    intercept; returns master message list (intercepts if load yields empty)."""
-    resolution = await resolve_master(user_msg.attachments, BASE_DIR)
+    current_template_id: str | None = None,
+) -> tuple[list[ChatMessage], str | None]:
+    """Resolve the master prompt for this turn. Raises HTTPException(400) on
+    intercept or empty-master-load. Returns (master_messages, new_template_id)
+    where new_template_id is the D1..D7 to persist (None for _generic)."""
+    resolution = await resolve_master(
+        user_msg.attachments, BASE_DIR, current_template_id
+    )
     if resolution.status == "intercept":
         logger.info("template_intercept reason={}", resolution.reason)
         raise HTTPException(status_code=400, detail=resolution.intercept_message)
@@ -98,7 +102,7 @@ async def _resolve_master_messages(
         raise HTTPException(
             status_code=400, detail="模板母版加载失败，请联系管理员"
         )
-    return master_messages
+    return master_messages, resolution.document_id
 
 
 @router.post("/chat")
@@ -125,7 +129,13 @@ async def chat(
         log_event="chat_request_received attachments={} has_text={}",
     )
 
-    master_messages = await _resolve_master_messages(user_msg, chat_logger)
+    master_messages, new_template = await _resolve_master_messages(
+        user_msg, chat_logger, session.current_template_id
+    )
+    if new_template and new_template != session.current_template_id:
+        session.current_template_id = new_template
+        if db is not None:
+            await update_session_template(db, session_id, new_template)
     llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(chat_logger, llm_messages, user_msg)
     assistant_text = await _call_llm(llm_messages)
@@ -171,7 +181,13 @@ async def chat_stream(
         request_logger=stream_logger,
         log_event="chat_stream_request_received attachments={} has_text={}",
     )
-    master_messages = await _resolve_master_messages(user_msg, stream_logger)
+    master_messages, new_template = await _resolve_master_messages(
+        user_msg, stream_logger, session.current_template_id
+    )
+    if new_template and new_template != session.current_template_id:
+        session.current_template_id = new_template
+        if db is not None:
+            await update_session_template(db, session_id, new_template)
     llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(stream_logger, llm_messages, user_msg)
 
