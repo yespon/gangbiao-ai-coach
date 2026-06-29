@@ -127,6 +127,7 @@ class ChatSessionDB(Base):
         TIMESTAMP(timezone=True), server_default=text("now()"), onupdate=datetime.now(UTC)
     )
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    current_template_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # -- relationships --
     user: Mapped["User"] = relationship(back_populates="sessions")

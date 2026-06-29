@@ -28,3 +28,4 @@ class ChatSession:
     user_id: str = "anonymous"
     created_at: str = field(default_factory=_now_iso)
     messages: list[ChatMessage] = field(default_factory=list)
+    current_template_id: str | None = None
