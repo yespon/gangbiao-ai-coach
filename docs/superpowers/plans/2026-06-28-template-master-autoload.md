@@ -181,15 +181,62 @@ Expected: FAIL — `ImportError: cannot import name 'load_master_messages'`。
 
 - [ ] **Step 3: 实现最小代码 — 重构 `context_service.py`**
 
-将现有 `load_default_context_messages`（`context_service.py:88-125`）重命名为 `load_master_messages(master_path: Path, logger)`，函数体里所有 `context_file` 改为 `master_path`。然后在下方加薄包装：
+将现有 `load_default_context_messages`（`context_service.py:88-125`）重命名为 `load_master_messages(master_path: Path, logger)`，函数体里所有 `context_file` 改为 `master_path`。**并给 JSON 解析加 try/except**——缺失或损坏的母版必须返回 `[]`（不抛），否则 Task 7 的"加载后空列表则拦截"无法生效（spec §5 要求坏母版不致 500）。
 
 ```python
+def load_master_messages(master_path: Path, logger) -> list[ChatMessage]:
+    """Load a master prompt (OpenAI chat history JSON) as context messages.
+
+    Returns [] when the file is missing or unparseable, so callers can
+    intercept (HTTP 400) instead of crashing on a corrupt master.
+    """
+    if not master_path.exists():
+        logger.warning("Master file not found: {}", master_path)
+        return []
+    try:
+        raw = json.loads(master_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Master file unparseable {}: {}", master_path, exc)
+        return []
+
+    header = {
+        "version": raw.get("version"),
+        "format": raw.get("format"),
+        "generated_at": raw.get("generated_at"),
+        "source_file": master_path.name,
+    }
+    logger.info("Master metadata loaded: {}", json.dumps(header, ensure_ascii=False))
+
+    messages: list[ChatMessage] = []
+    for item in raw.get("messages", []):
+        role = item.get("role", "user")
+        content = item.get("content", "")
+        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else None
+        attachments = _attachments_from_history_metadata(meta)
+        payload = content
+        summary = _compact_metadata_summary(meta)
+        if summary:
+            payload = (
+                f"{content}\n\n[metadata]\n"
+                f"{json.dumps(summary, ensure_ascii=False)}"
+            )
+        messages.append(
+            ChatMessage(
+                role=role,
+                content=payload,
+                is_context=True,
+                attachments=attachments,
+            )
+        )
+    return messages
+
+
 def load_default_context_messages(context_file: Path, logger) -> list[ChatMessage]:
     """Backward-compatible wrapper: load the default (D5) master as context."""
     return load_master_messages(context_file, logger)
 ```
 
-保留 import 不变。
+保留 import 不变（`json`、`ChatMessage` 等已在文件顶部）。
 
 - [ ] **Step 4: 运行测试确认通过**
 
@@ -1002,3 +1049,504 @@ git commit -m "feat(main): validate master registry at startup"
 
 **已知偏离（记录非 bug）：**
 - `test_persistence.py` 中 `test_chat_message_persisted` / `test_session_history_from_db` 因 JSON-POST 到 Form 路由返回 422，是既有失败（本计划前已存在），不在本期范围。Task 8 Step 2 注明 deselect。
+
+---
+
+## Phase B: 当前模板持久化（Task 9–11）
+
+Revised spec (2026-06-29) adds `current_template_id` persistence so a user
+who uploads a D5 template, then sends a plain-text follow-up, keeps using D5
+instead of falling back to `_generic`. See spec §2, §4.1 step 3/6, §4.2, §4.5.
+
+## Task 9: alembic 迁移 + DB 模型 + 内存模型
+
+**Files:**
+- Create: `alembic/versions/008_chat_session_current_template.py`
+- Modify: `app/models/db_models.py`（`ChatSessionDB` 增列）
+- Modify: `app/models/chat.py`（`ChatSession` 增字段）
+
+**Interfaces:**
+- Consumes: 现有 `ChatSessionDB` 列定义、`ChatSession.__init__` 参数。
+- Produces: `ChatSessionDB.current_template_id: Mapped[str | None]`、`ChatSession.current_template_id: str | None`（创建空会话时不设值，由后续 `rebuild_memory_session` / 路由更新填入）。
+
+- [ ] **Step 1: 创建迁移文件**
+
+`alembic/versions/008_chat_session_current_template.py`：
+
+```python
+"""Add current_template_id to chat_sessions.
+
+Revision ID: 008
+Revises: 007_session_title_pin_delete
+"""
+
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "008_chat_session_current_template"
+down_revision = "007_session_title_pin_delete"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.add_column(
+        "chat_sessions",
+        sa.Column("current_template_id", sa.String(10), nullable=True),
+    )
+
+
+def downgrade() -> None:
+    op.drop_column("chat_sessions", "current_template_id")
+```
+
+- [ ] **Step 2: 验证迁移在本地 DB 可执行（requires_pg 环境）**
+
+Run: `.venv/bin/python -m pytest tests/integration/test_persistence.py -q -k "test_chat" --no-header 2>&1 | tail -3`
+（使用已有 `requires_pg` 标记的测试验证 DB 连接可用。迁移本身通过 alembic 手动验证。）
+
+手动验证（如有本地 PG）：
+```bash
+.venv/bin/alembic upgrade head && .venv/bin/alembic downgrade -1 && .venv/bin/alembic upgrade head
+```
+Expected: 无错误。
+
+- [ ] **Step 3: 改 `app/models/db_models.py` — `ChatSessionDB` 增列**
+
+在 `ChatSessionDB` 类中 `deleted_at` 定义之后、`# -- relationships --` 注释之前，插入：
+
+```python
+    current_template_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
+```
+
+- [ ] **Step 4: 改 `app/models/chat.py` — `ChatSession` 增字段**
+
+```python
+@dataclass
+class ChatSession:
+    session_id: str
+    show_context_in_history: bool
+    context_file: str
+    user_id: str = "anonymous"
+    created_at: str = field(default_factory=_now_iso)
+    messages: list[ChatMessage] = field(default_factory=list)
+    current_template_id: str | None = None
+```
+
+- [ ] **Step 5: 验证 `import` 无错误**
+
+Run: `.venv/bin/python -c "from app.models.db_models import ChatSessionDB; print('DB OK'); from app.models.chat import ChatSession; s=ChatSession(session_id='x',show_context_in_history=False,context_file=''); print('memory OK'); print(s.current_template_id)"`
+Expected: `DB OK` / `memory OK` / `None`。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add alembic/versions/008_chat_session_current_template.py app/models/db_models.py app/models/chat.py
+git commit -m "feat(db): add current_template_id column to chat_sessions; add memory field"
+```
+
+---
+
+## Task 10: `rebuild_memory_session` 回填 + `update_session_template` + `resolve_master` 签名变更
+
+**Files:**
+- Modify: `app/services/session_service.py`（`rebuild_memory_session` 回填 + 新增 `update_session_template`）
+- Modify: `app/services/template_prompt_service.py`（`resolve_master` 增 `current_template_id` 参数，无附件分支改逻辑）
+- Test: `tests/unit/test_template_prompt_service.py`（追加 2 个沿用模板的测试）
+- Test: `tests/unit/test_session_service_master.py`（新建，测 `update_session_template` + `rebuild` 回填）
+
+**Interfaces:**
+- Consumes: `sqlalchemy.ext.asyncio.AsyncSession`、`app.models.db_models.ChatSessionDB`、`app.models.chat.ChatSession.current_template_id`（Task 9）。
+- Produces:
+  - `rebuild_memory_session` 填充 `current_template_id=getattr(session_db, "current_template_id", None) or None`
+  - `async update_session_template(db, session_id, template_id) -> None`：`UPDATE chat_sessions SET current_template_id = :tid WHERE id = :sid`
+  - `resolve_master(attachments, base_dir, current_template_id=None)`：无附件时若 `current_template_id` 非空 → `ok` + 对应母版；否则 → `ok, _generic`。**旧调用方（无第三参数）行为不变**（默认 None → 通用母版）。
+
+- [ ] **Step 1: 新建 `tests/unit/test_session_service_master.py` — 失败测试**
+
+```python
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.services.session_service import update_session_template
+
+
+class _FakeSessionDB:
+    def __init__(self):
+        self.current_template_id = None
+        self.id = "fake-sid"
+        self.show_context = False
+        self.context_file = ""
+        self.user_id = "u1"
+        self.created_at = None
+        self.messages = []
+
+
+async def test_update_session_template_sets_column():
+    db = AsyncMock()
+    
+    # simulate get_session_by_id returning a session
+    async def fake_get_session_by_id(db, session_id, user_id):
+        s = MagicMock()
+        s.id = "fake-sid"
+        s.current_template_id = None
+        return s
+
+    with patch("app.services.session_service.get_session_by_id", new=fake_get_session_by_id):
+        await update_session_template(db, "fake-sid", "D5")
+    
+    db.commit.assert_awaited_once()
+```
+
+注：`update_session_template` 需 `get_session_by_id` 查找会话（或直接用 SQL `UPDATE`）。更简单的方式是直接 `UPDATE`（不需要整个 ORM 对象），可写成：
+
+```python
+from sqlalchemy import update
+from app.models.db_models import ChatSessionDB
+
+async def update_session_template(
+    db: AsyncSession, session_id: str, template_id: str
+) -> None:
+    await db.execute(
+        update(ChatSessionDB)
+        .where(ChatSessionDB.id == session_id)
+        .values(current_template_id=template_id)
+    )
+    await db.commit()
+```
+
+这样可以避免异步 `get_session_by_id`，测试更简单——直接 mock `db.execute` + `db.commit`。
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `.venv/bin/python -m pytest tests/unit/test_session_service_master.py -q`
+Expected: FAIL — `update_session_template` 不存在。
+
+- [ ] **Step 3: 实现 `update_session_template`**
+
+追加到 `app/services/session_service.py`：
+
+```python
+from sqlalchemy import update as sa_update
+
+async def update_session_template(
+    db: AsyncSession, session_id: str, template_id: str
+) -> None:
+    """Persist the current template_id on a session (D1..D7). Called when
+    classify_file successfully identifies an attachment."""
+    await db.execute(
+        sa_update(ChatSessionDB)
+        .where(ChatSessionDB.id == session_id)
+        .values(current_template_id=template_id)
+    )
+    await db.commit()
+```
+
+`sa_update` 需与文件顶部已存在的 `select` 区分。实际用 `from sqlalchemy import update as sa_update`（避免与 `select` 冲突）。
+
+- [ ] **Step 4: 改 `rebuild_memory_session` 回填 `current_template_id`**
+
+在 `ChatSession(...)` 构造函数中追加：
+
+```python
+        current_template_id=getattr(session_db, "current_template_id", None) or None,
+```
+
+放在 `created_at=...` 行之后。
+
+- [ ] **Step 5: 运行 `test_session_service_master` 确认通过**
+
+Run: `.venv/bin/python -m pytest tests/unit/test_session_service_master.py -q`
+Expected: PASS。
+
+- [ ] **Step 6: 追加 2 个 `resolve_master` 测试 + 改实现**
+
+追加到 `tests/unit/test_template_prompt_service.py`（在现有 `test_resolve_no_attachments_returns_generic` 之后）：
+
+```python
+def test_resolve_no_attachments_with_current_template_returns_existing(master_dir):
+    """当会话已有 current_template="D5" 时，无附件消息沿用 D5（不回退通用母版）。"""
+    r = asyncio.run(svc.resolve_master([], svc.MASTER_DIR.parent, current_template_id="D5"))
+    assert r.status == "ok"
+    assert r.document_id == "D5"
+    assert r.master_path == master_dir / "D5.history.json"
+
+
+def test_resolve_no_attachments_current_template_none_returns_generic(master_dir):
+    """current_template 为 None（新会话/通用态）时，无附件消息用通用母版（向后兼容）。"""
+    r = asyncio.run(svc.resolve_master([], svc.MASTER_DIR.parent, current_template_id=None))
+    assert r.status == "ok"
+    assert r.document_id is None
+    assert r.master_path == master_dir / "_generic.history.json"
+```
+
+- [ ] **Step 7: 确认新测试 FAIL**
+
+Run: `.venv/bin/python -m pytest tests/unit/test_template_prompt_service.py -q -k "current_template"`
+Expected: FAIL — `resolve_master` 不接受 `current_template_id` 参数。
+
+- [ ] **Step 8: 改 `resolve_master` 签名 + 实现**
+
+改 `resolve_master` 签名行（`template_prompt_service.py:72`）：
+
+```python
+async def resolve_master(
+    attachments: list[dict], base_dir: Path,
+    current_template_id: str | None = None,
+) -> Resolution:
+```
+
+改无附件分支（`template_prompt_service.py:78-82`）：
+
+```python
+    if not attachments:
+        doc_id = current_template_id
+        path = get_master_path(current_template_id)
+        if path is None:
+            # current_template_id invalid (e.g. master file missing) — fall back to generic
+            path = get_master_path(None)
+            doc_id = None
+            if path is None:
+                return _intercept(_MSG_MASTER_MISSING, "generic master missing")
+        return Resolution(status="ok", master_path=path, document_id=doc_id)
+```
+
+- [ ] **Step 9: 确认所有测试 PASS**
+
+Run: `.venv/bin/python -m pytest tests/unit/test_template_prompt_service.py -q`
+Expected: PASS（15 项：Task 3 的 4 + Task 4 的 9 + 本任务 2）。
+
+- [ ] **Step 10: 提交**
+
+```bash
+git add app/services/session_service.py app/services/template_prompt_service.py tests/unit/test_template_prompt_service.py tests/unit/test_session_service_master.py
+git commit -m "feat(master): persist current_template_id; resolve_master reuses it on no-attachment"
+```
+
+---
+
+## Task 11: `chat.py` 路由写入 `current_template_id` + 完整测试
+
+**Files:**
+- Modify: `app/api/v1/routes/chat.py`（`_resolve_master_messages` 增参数，两路由写状态）
+- Test: `tests/integration/test_chat_template_master.py`（追加 2 个集成测试：纯文本沿用 + 模板切换）
+- Test: `tests/unit/test_template_prompt_service.py` 的 `resolve_master` 测试已覆盖（Task 10）
+
+**Interfaces:**
+- Consumes:
+  - `app.services.session_service.update_session_template(db, session_id, template_id) -> None`（Task 10）
+  - `app.services.template_prompt_service.resolve_master(attachments, base_dir, current_template_id)`（签名已改，Task 10）
+  - `ChatSession.current_template_id`（Task 9）
+- Produces: `/chat` 与 `/chat/stream` 识别成功后将 `document_id`（D1..D7）写入 DB + 内存。
+
+**Global Constraints（Phase B 修订版）：**
+- 无附件时沿用 `session.current_template_id`；仅当其为空时才用 `_generic`。
+- 写入时机：仅带附件且识别成功时更新；无附件不写；拦截不写。
+- `update_session_template` 调用条件：`resolution.status=="ok"` 且 `resolution.document_id` 为 D1..D7 且与 `session.current_template_id` 不同。DB 写入在 `db is not None` 时才执行（兼容测试的 `db=None` 模式）。
+
+- [ ] **Step 1: 追加集成测试到 `tests/integration/test_chat_template_master.py`**
+
+在现有 test 文件末尾追加：
+
+```python
+def test_chat_d5_then_text_follow_up_keeps_d5(client, monkeypatch):
+    """上传 D5 后，纯文本追问仍用 D5 母版（current_template_id 持久化）。"""
+    _patch_classify_d5(monkeypatch)
+    created = client.post("/api/sessions", json={"show_context_in_history": False})
+    sid = created.json()["session_id"]
+
+    # 第一轮：上传 D5
+    resp1 = client.post(
+        "/api/chat",
+        data={"session_id": sid, "message": "辅导我"},
+        files={"files": ("a.xlsx", _xlsx_bytes(), "application/vnd.ms-excel")},
+    )
+    assert resp1.status_code == 200
+
+    # 第二轮：纯文本（无附件）—— 应沿用 D5，不回退 generic
+    resp2 = client.post("/api/chat", data={"session_id": sid, "message": "继续"})
+    assert resp2.status_code == 200
+    # 在 db=None 的测试环境下，current_template_id 仅保存在内存 ChatSession 上。
+    # 验证：第二轮 resolve_master 应拿到 current_template_id="D5"。
+    # 通过 monkeypatch 抓取 resolve_master 调用参数来验证。
+
+
+def test_chat_d5_then_switch_to_d4(client, monkeypatch):
+    """上传 D5 后上传 D4 附件，模板切换到 D4。"""
+    created = client.post("/api/sessions", json={"show_context_in_history": False})
+    sid = created.json()["session_id"]
+
+    # Round 1: D5
+    _patch_classify_d5(monkeypatch)
+    resp1 = client.post(
+        "/api/chat",
+        data={"session_id": sid, "message": "辅导我"},
+        files={"files": ("a.xlsx", _xlsx_bytes(), "application/vnd.ms-excel")},
+    )
+    assert resp1.status_code == 200
+
+    # Round 2: D4 (switch)
+    def _patch_classify_d4(m):
+        async def fake(raw, ext):
+            return ClassificationResult(matched=True, document_id="D4")
+        m.setattr(svc, "classify_file", fake)
+
+    _patch_classify_d4(monkeypatch)
+    resp2 = client.post(
+        "/api/chat",
+        data={"session_id": sid, "message": "换模板了"},
+        files={"files": ("b.xlsx", _xlsx_bytes(), "application/vnd.ms-excel")},
+    )
+    assert resp2.status_code == 200
+
+    # Round 3: text follow-up — should now use D4
+    resp3 = client.post("/api/chat", data={"session_id": sid, "message": "继续"})
+    assert resp3.status_code == 200
+```
+
+- [ ] **Step 2: 运行测试确认 FAIL**
+
+Run: `.venv/bin/python -m pytest tests/integration/test_chat_template_master.py -q`
+Expected: 有两新测试中至少"纯文本沿用" FAIL（当前无附件仍回退 `_generic`，不会报错但模板不对——集成测试难以断言模板内容因 `OPENAI_API_KEY` 为空；但可通过抓 `resolve_master` 调用参数来验证）。
+
+> **测试策略**：因集成测试环境 `OPENAI_API_KEY` 为空，无法从 LLM 回复中判断模板。改为在追加测试中使用 `monkeypatch` 抓取 `_resolve_master_messages` 的调用参数，或直接抓 `resolve_master` 返回值。最简单：追加一个 spy 收集 `resolve_master(master_dir, ...)` 调用写日志，然后在测试断言 `spy.current_template` == "D5"。
+
+为简单可用 monkeypatch wrap `svc.resolve_master` 记录调用参数：
+
+```python
+def test_chat_d5_then_text_follow_up_keeps_d5(client, monkeypatch):
+    _patch_classify_d5(monkeypatch)
+    created = client.post("/api/sessions", json={"show_context_in_history": False})
+    sid = created.json()["session_id"]
+
+    calls = []
+    original = svc.resolve_master
+    async def spy(att, base_dir, current_template_id=None):
+        calls.append(current_template_id)
+        return await original(att, base_dir, current_template_id=current_template_id)
+    monkeypatch.setattr(svc, "resolve_master", spy)
+
+    # Round 1: D5 attachment
+    client.post("/api/chat", data={"session_id": sid, "message": "辅导我"},
+                files={"files": ("a.xlsx", _xlsx_bytes(), "application/vnd.ms-excel")})
+    # Round 2: text only
+    client.post("/api/chat", data={"session_id": sid, "message": "继续"})
+    # Round 2 should have called resolve_master with current_template_id="D5"
+    assert calls[-1] == "D5", f"expected D5, got {calls[-1]} (all calls: {calls})"
+```
+
+- [ ] **Step 3: 改 `_resolve_master_messages` 签名 + 传参**
+
+在 `app/api/v1/routes/chat.py` 中改 `_resolve_master_messages` 签名：
+
+```python
+async def _resolve_master_messages(
+    user_msg: ChatMessage,
+    logger,
+    current_template_id: str | None = None,
+) -> list[ChatMessage]:
+```
+
+内部 `resolve_master` 调用改为：
+
+```python
+    resolution = await resolve_master(user_msg.attachments, BASE_DIR, current_template_id)
+```
+
+（第三参数传给 `resolve_master`）。
+
+- [ ] **Step 4: 改 `/chat` 路由 — 传 `current_template_id` + 写状态**
+
+改 `/chat` 路由中 `_resolve_master_messages` 调用行：
+
+```python
+    master_messages = await _resolve_master_messages(user_msg, chat_logger, session.current_template_id)
+```
+
+在 `_resolve_master_messages` 返回后、`_build_model_messages` 之前，插入状态同步：
+
+```python
+    # Persist template change
+    resolution = await resolve_master(user_msg.attachments, BASE_DIR, session.current_template_id)
+    if resolution.status == "intercept":
+        ...
+    # -- TOO COMPLEX: rewrite _resolve_master_messages to also return the resolution.
+```
+
+**更干净的方案**：改 `_resolve_master_messages` 返回 `(master_messages, new_template_id)`——`new_template_id` 为 `resolution.document_id`（仅当 D1..D7 时非空），路由据此写状态。
+
+重写 `_resolve_master_messages`：
+
+```python
+async def _resolve_master_messages(
+    user_msg: ChatMessage,
+    logger,
+    current_template_id: str | None = None,
+) -> tuple[list[ChatMessage], str | None]:
+    """Resolve master messages + return the template_id to persist (or None).
+
+    Raises HTTPException(400) on intercept or empty-master-load.
+    """
+    resolution = await resolve_master(user_msg.attachments, BASE_DIR, current_template_id)
+    if resolution.status == "intercept":
+        logger.info("template_intercept reason={}", resolution.reason)
+        raise HTTPException(status_code=400, detail=resolution.intercept_message)
+    master_messages = load_master_messages(resolution.master_path, logger)
+    if not master_messages:
+        logger.error("master_load_empty path={}", resolution.master_path)
+        raise HTTPException(
+            status_code=400, detail="模板母版加载失败，请联系管理员"
+        )
+    new_template = resolution.document_id  # D1..D7, or None for _generic
+    return master_messages, new_template
+```
+
+改 `/chat` 路由调用点：
+
+```python
+    master_messages, new_template = await _resolve_master_messages(
+        user_msg, chat_logger, session.current_template_id)
+    if new_template and new_template != session.current_template_id:
+        session.current_template_id = new_template
+        if db is not None:
+            await update_session_template(db, session_id, new_template)
+    llm_messages = _build_model_messages(session, user_msg, master_messages)
+```
+
+改 `/chat/stream` 对应位置（同模式）。
+
+`update_session_template` 从 `app/services/session_service` import（追加到 chat.py 头部）。
+
+- [ ] **Step 5: 运行测试确认通过**
+
+Run: `.venv/bin/python -m pytest tests/integration/test_chat_template_master.py -q`
+Expected: PASS（6 项：Task 7 的 4 + 本任务 2）。
+
+- [ ] **Step 6: 回归全部**
+
+Run: `.venv/bin/python -m pytest tests/unit/ --ignore=tests/unit/test_upload_size_limit.py tests/integration/test_chat_template_master.py tests/integration/test_session_history_visibility.py tests/integration/test_chat_stream_done_payload.py tests/integration/test_llm_fallback_behavior.py tests/integration/test_api_basics.py -q`
+Expected: 全 PASS。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add app/api/v1/routes/chat.py tests/integration/test_chat_template_master.py
+git commit -m "feat(chat): persist and reuse current_template_id across turns"
+```
+
+---
+
+## Phase B Self-Review
+
+**Spec coverage:** §2 无附件沿用 + 持久化 → Task 9（DB 列）、Task 10（resolve_master + update_session_template）、Task 11（路由写入 + 集成测试）。§4.1 step 6 → Task 11。§4.2 无附件分支 → Task 10。§4.5 全项 → Task 9+10+11。§6.1 新增 2 resolve_master 测试 → Task 10。§6.2 纯文本沿用 + 切换 → Task 11。§6.4 DB 测试 → Task 9+10。覆盖完整。
+
+**Placeholder scan:** 无 TBD/TODO。所有步骤含完整代码。
+
+**Type consistency:**
+- `resolve_master(attachments, base_dir, current_template_id=None)` — Task 10 定义，Task 11 调用端一致。
+- `_resolve_master_messages(user_msg, logger, current_template_id=None) -> tuple[list[ChatMessage], str | None]` — Task 11 定义，两路由调用端一致（tuple 解包 `master_messages, new_template`）。
+- `update_session_template(db, session_id, template_id)` — Task 10 实现，Task 11 import + 调用一致。
+- `session.current_template_id` — Task 9 内存模型字段，Task 10/11 读写一致。
+- `ChatSessionDB.current_template_id` — Task 9 DB 列，Task 10 `rebuild_memory_session`/`update_session_template` 读写一致。
