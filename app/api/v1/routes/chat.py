@@ -133,9 +133,9 @@ async def chat(
         user_msg, chat_logger, session.current_template_id
     )
     if new_template and new_template != session.current_template_id:
-        session.current_template_id = new_template
         if db is not None:
             await update_session_template(db, session_id, new_template)
+        session.current_template_id = new_template
     llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(chat_logger, llm_messages, user_msg)
     assistant_text = await _call_llm(llm_messages)
@@ -185,9 +185,9 @@ async def chat_stream(
         user_msg, stream_logger, session.current_template_id
     )
     if new_template and new_template != session.current_template_id:
-        session.current_template_id = new_template
         if db is not None:
             await update_session_template(db, session_id, new_template)
+        session.current_template_id = new_template
     llm_messages = _build_model_messages(session, user_msg, master_messages)
     _log_llm_payload_debug(stream_logger, llm_messages, user_msg)
 
