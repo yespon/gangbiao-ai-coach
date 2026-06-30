@@ -156,3 +156,56 @@ def test_chat_d5_then_switch_to_d4(client, monkeypatch):
     r3 = client.post("/api/chat", data={"session_id": sid, "message": "继续"})
     assert r3.status_code == 200
     assert calls[-1] == "D4", f"expected D4, got {calls[-1]} (calls: {calls})"
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_rebuild_then_reuse_keeps_template(monkeypatch, tmp_path):
+    """e2e wiring: cache miss → _get_or_load_session → rebuild_memory_session
+    (backfills current_template_id from DB) → resolve_master reuses it.
+
+    Covers spec §6.2 "会话模板为 D5 时重启/缓存重建后纯文本消息仍用 D5"
+    without requiring a live PostgreSQL (mocks the DB layer)."""
+    from unittest.mock import MagicMock
+    from app.api.v1.routes import chat as chat_mod
+    from app.services import session_service as ss
+
+    # Master dir with D5 + _generic present.
+    monkeypatch.setattr(svc, "MASTER_DIR", tmp_path)
+    for did in ["_generic", "D5"]:
+        (tmp_path / f"{did}.history.json").write_text(
+            json.dumps({"messages": [{"role": "system", "content": f"{did} master"}]}),
+            encoding="utf-8",
+        )
+    svc._build_registry()
+
+    # Simulate a DB row that carries current_template_id="D5".
+    session_db = MagicMock()
+    session_db.id = "sid-rebuild"
+    session_db.show_context = False
+    session_db.context_file = ""
+    session_db.user_id = "u1"
+    session_db.created_at = None
+    session_db.current_template_id = "D5"
+    session_db.messages = []
+
+    async def fake_get_session_by_id(db, session_id, user_id):
+        return session_db if session_id == "sid-rebuild" else None
+
+    monkeypatch.setattr(chat_mod, "get_session_by_id", fake_get_session_by_id)
+    # Empty cache → forces DB fallback path inside _get_or_load_session.
+    ss.SESSION_CACHE.clear()
+    # db is a truthy non-None sentinel so the DB-fallback branch runs.
+    fake_db = MagicMock()
+
+    session = await chat_mod._get_or_load_session("sid-rebuild", "u1", fake_db)
+
+    assert session is not None
+    assert session.current_template_id == "D5"  # backfilled by rebuild_memory_session
+
+    # Now a no-attachment turn on this rebuilt session must reuse D5.
+    r = await svc.resolve_master([], tmp_path, current_template_id=session.current_template_id)
+    assert r.status == "ok"
+    assert r.document_id == "D5"
+    assert r.master_path == tmp_path / "D5.history.json"
+    # And the cache was repopulated by _get_or_load_session.
+    assert ss.SESSION_CACHE.get("sid-rebuild") is session
