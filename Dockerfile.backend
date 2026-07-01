@@ -13,6 +13,7 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 COPY main.py ./main.py
 COPY 岗位标准化母体.history.json ./岗位标准化母体.history.json
+COPY master ./master
 COPY materials ./materials
 
 COPY alembic.ini ./

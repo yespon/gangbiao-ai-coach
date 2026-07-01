@@ -1,6 +1,6 @@
 """Add current_template_id to chat_sessions.
 
-Revision ID: 008
+Revision ID: 008_current_template
 Revises: 007_session_title_pin_delete
 """
 
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "008_chat_session_current_template"
+revision = "008_current_template"
 down_revision = "007_session_title_pin_delete"
 branch_labels = None
 depends_on = None
