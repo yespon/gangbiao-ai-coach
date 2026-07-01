@@ -54,6 +54,18 @@ def validate_master_registry(logger) -> None:
             logger.error("master_prompt_missing label={} path={}", label, path)
 
 
+def iter_master_entries() -> list[tuple[str | None, Path]]:
+    """Return the (document_id | None, path) pairs the preload cache should warm.
+
+    Mirrors MASTER_REGISTRY exactly so the cache key set and the registry stay
+    in lockstep: any document_id the resolver can return a path for has a
+    matching cache key here. Sorted for deterministic startup logging."""
+    return sorted(
+        MASTER_REGISTRY.items(),
+        key=lambda kv: ("0" if kv[0] is None else kv[0]) or "",
+    )
+
+
 from app.services.template_classifier import classify_file
 
 _EXCEL_EXTS = (".xlsx", ".xls")

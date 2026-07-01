@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.db_models import User
 from app.services.session_service import SESSION_CACHE
-from app.services.context_service import MATERIALS_CONTEXT_CACHE
+from app.services.context_service import MATERIALS_CONTEXT_CACHE, MASTER_MESSAGES_CACHE
 
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -41,9 +41,11 @@ def isolate_runtime_state(monkeypatch: pytest.MonkeyPatch) -> Generator[None, No
     monkeypatch.setattr(settings, "openai_api_key", "")
     SESSION_CACHE.clear()
     MATERIALS_CONTEXT_CACHE.clear()
+    MASTER_MESSAGES_CACHE.clear()
     yield
     SESSION_CACHE.clear()
     MATERIALS_CONTEXT_CACHE.clear()
+    MASTER_MESSAGES_CACHE.clear()
 
 
 @pytest.fixture()
