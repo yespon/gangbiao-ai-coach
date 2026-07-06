@@ -56,19 +56,36 @@ def _student_row(student: ManagedUserDB, session_count: int, latest_session_at: 
         "latest_session_at": latest_session_at.isoformat() if latest_session_at else None,
     }
 
-
 async def list_conversation_students(db: AsyncSession, user: User, scope: str) -> list[dict[str, Any]]:
     if scope not in VALID_CONVERSATION_SCOPES:
         raise HTTPException(status_code=400, detail="invalid_scope")
+
     if scope == "all" and not is_admin_user(user):
         raise HTTPException(status_code=403, detail="conversation_forbidden")
 
     stmt = (
-        select(ManagedUserDB)
+        select(
+            ManagedUserDB,
+            func.count(ChatSessionDB.id).label("session_count"),
+            func.max(ChatSessionDB.updated_at).label("latest_session_at"),
+        )
+        .outerjoin(
+            User,
+            User.managed_user_id == ManagedUserDB.id,
+        )
+        .outerjoin(
+            ChatSessionDB,
+            ChatSessionDB.user_id == User.id,
+        )
         .options(selectinload(ManagedUserDB.coach))
         .where(ManagedUserDB.primary_role == "student")
-        .order_by(ManagedUserDB.employee_no)
+        .group_by(ManagedUserDB.id)
+        .order_by(
+            func.count(ChatSessionDB.id).desc(),
+            ManagedUserDB.employee_no,
+        )
     )
+
     if scope == "mine":
         managed = getattr(user, "managed_user", None)
         if not managed or not is_coach_user(user):
@@ -76,24 +93,12 @@ async def list_conversation_students(db: AsyncSession, user: User, scope: str) -
         stmt = stmt.where(ManagedUserDB.coach_id == managed.id)
 
     result = await db.execute(stmt)
-    students = list(result.scalars().all())
-    if not students:
-        return []
+    rows = result.all()
 
-    student_ids = [student.id for student in students]
-    session_result = await db.execute(
-        select(
-            User.managed_user_id,
-            func.count(ChatSessionDB.id).label("session_count"),
-            func.max(ChatSessionDB.updated_at).label("latest_session_at"),
-        )
-        .join(ChatSessionDB, ChatSessionDB.user_id == User.id)
-        .where(User.managed_user_id.in_(student_ids))
-        .group_by(User.managed_user_id)
-    )
-    stats = {row.managed_user_id: (row.session_count, row.latest_session_at) for row in session_result.all()}
-    return [_student_row(student, *stats.get(student.id, (0, None))) for student in students]
-
+    return [
+        _student_row(student, session_count, latest_session_at)
+        for student, session_count, latest_session_at in rows
+    ]
 
 async def list_student_sessions(db: AsyncSession, user: User, managed_user_id: uuid.UUID) -> list[dict[str, Any]]:
     student = await db.get(ManagedUserDB, managed_user_id)

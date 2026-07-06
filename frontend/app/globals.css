@@ -1878,7 +1878,7 @@ textarea {
 
 .admin-conversation-dialog-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 0.64fr);
+  grid-template-columns: minmax(220px, 0.24fr) minmax(0, 0.76fr);
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   overflow: hidden;
@@ -1971,7 +1971,8 @@ textarea {
 .admin-message {
   display: grid;
   gap: 8px;
-  width: min(820px, 100%);
+  width: fit-content;
+  max-width: min(600px, 100%);
   padding: 12px;
   border: 1px solid #dbe3ef;
   border-radius: 12px;
@@ -1979,12 +1980,12 @@ textarea {
 }
 
 .admin-message-assistant {
-  justify-self: start;
+  justify-self: end;
   background: linear-gradient(135deg, #ffffff, #f8fafc);
 }
 
 .admin-message-user {
-  justify-self: end;
+  justify-self: start;
   border-color: #bae6fd;
   background: linear-gradient(135deg, #eff6ff, #e0f2fe);
 }
@@ -1997,6 +1998,10 @@ textarea {
   color: #64748b;
   font-size: 12px;
   font-weight: 900;
+}
+
+.admin-message-assistant .admin-message-head {
+  flex-direction: row-reverse;
 }
 
 .admin-message-head span {

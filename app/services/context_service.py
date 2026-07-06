@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +7,27 @@ from app.core.config import BASE_DIR, settings
 from app.models.chat import ChatMessage
 
 MATERIALS_CONTEXT_CACHE: list[ChatMessage] = []
+
+# Preload cache (requirement 3 "preload"): {document_id | None: [ChatMessage]}.
+# Populated once at startup by preload_master_messages(); load_master_messages()
+# returns a clone from here and only hits disk on a miss (then backfills), so
+# per-turn cost is a clone, not a file read + JSON parse.
+MASTER_MESSAGES_CACHE: dict[str | None, list[ChatMessage]] = {}
+
+_GENERIC_STEM = "_generic"
+_KEY_SEPARATOR = ".history"
+
+
+def _master_key_from_path(path: Path) -> str | None:
+    """Derive the cache key (document_id, or None for the generic master) from a
+    master file path. Convention: ``{D1..D7}.history.json`` /
+    ``_generic.history.json`` — kept in sync with template_prompt_service's
+    MASTER_REGISTRY so a path resolved by the registry maps back to its key.
+    Strips the ``.history.json`` suffix so e.g. ``D6.history.json`` → ``"D6"``."""
+    stem = path.name
+    if _KEY_SEPARATOR in stem:
+        stem = stem.split(_KEY_SEPARATOR, 1)[0]
+    return None if stem == _GENERIC_STEM else stem
 
 
 def _clone_context_messages(messages: list[ChatMessage]) -> list[ChatMessage]:
@@ -85,22 +107,27 @@ def _compact_metadata_summary(meta: dict[str, Any] | None) -> dict[str, Any]:
     return summary
 
 
-def load_default_context_messages(context_file: Path, logger) -> list[ChatMessage]:
-    if not context_file.exists():
-        logger.warning("Default context file not found: {}", context_file)
+def _parse_master_file(master_path: Path, logger) -> list[ChatMessage]:
+    """Read + parse a master JSON from disk into context messages. Returns []
+    when the file is missing or unparseable (caller intercepts on empty)."""
+    if not master_path.exists():
+        logger.warning("Master file not found: {}", master_path)
         return []
-
-    raw = json.loads(context_file.read_text(encoding="utf-8"))
-    messages: list[ChatMessage] = []
+    try:
+        raw = json.loads(master_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Master file unparseable {}: {}", master_path, exc)
+        return []
 
     header = {
         "version": raw.get("version"),
         "format": raw.get("format"),
         "generated_at": raw.get("generated_at"),
-        "source_file": context_file.name,
+        "source_file": master_path.name,
     }
-    logger.info("Default context metadata loaded: {}", json.dumps(header, ensure_ascii=False))
+    logger.info("Master metadata loaded: {}", json.dumps(header, ensure_ascii=False))
 
+    messages: list[ChatMessage] = []
     for item in raw.get("messages", []):
         role = item.get("role", "user")
         content = item.get("content", "")
@@ -121,8 +148,65 @@ def load_default_context_messages(context_file: Path, logger) -> list[ChatMessag
                 attachments=attachments,
             )
         )
-
     return messages
+
+
+def load_master_messages(master_path: Path, logger) -> list[ChatMessage]:
+    """Load a master prompt (OpenAI chat history JSON) as context messages.
+
+    Serves from the preload cache (requirement 3): on a hit it returns a clone
+    of the cached list (callers mutate the result — e.g. _build_model_messages
+    appends it — so we never hand out the shared cache list itself). On a miss
+    it parses the file from disk and backfills the cache so subsequent turns are
+    cheap. Returns [] when the file is missing or unparseable, so callers can
+    intercept (HTTP 400) instead of crashing on a corrupt master.
+    """
+    key = _master_key_from_path(master_path)
+    cached = MASTER_MESSAGES_CACHE.get(key)
+    if cached is not None:
+        return _clone_context_messages(cached)
+
+    messages = _parse_master_file(master_path, logger)
+    # Backfill even an empty list so a persistently-missing/corrupt master
+    # doesn't re-hit disk every turn — empty is a stable signal the caller
+    # already intercepts on. Only keys we can derive (stems matching our
+    # naming convention) are cached; exotic paths stay uncached.
+    if key is not None or master_path.stem == _GENERIC_STEM:
+        MASTER_MESSAGES_CACHE[key] = messages
+    return messages
+
+
+def preload_master_messages(
+    master_paths: Iterable[tuple[str | None, Path]],
+    logger,
+) -> int:
+    """Populate MASTER_MESSAGES_CACHE at startup.
+
+    master_paths: iterable of (key, path) pairs — key is the document_id or
+    None for the generic master, path the .history.json file. Each existing,
+    parseable file is read once and cached; missing/unparseable files are
+    skipped (validate_master_registry already logs them at ERROR). Returns the
+    number of masters successfully cached. Safe to call again (idempotent
+    rebuild — clears first).
+    """
+    MASTER_MESSAGES_CACHE.clear()
+    count = 0
+    for key, path in master_paths:
+        if not path.exists():
+            continue  # logged by validate_master_registry
+        messages = _parse_master_file(path, logger)
+        if messages:
+            MASTER_MESSAGES_CACHE[key] = messages
+            count += 1
+        else:
+            logger.warning("master_preload_skip key={} path={} (empty/unparseable)", key, path)
+    logger.info("master_preload_loaded count={}", count)
+    return count
+
+
+def load_default_context_messages(context_file: Path, logger) -> list[ChatMessage]:
+    """Backward-compatible wrapper: load the default (D5) master as context."""
+    return load_master_messages(context_file, logger)
 
 
 def load_materials_context_messages(

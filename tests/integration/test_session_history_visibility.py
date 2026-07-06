@@ -18,4 +18,5 @@ def test_session_history_shows_context_when_flag_true(client):
     assert created.status_code == 200
 
     history = created.json()["history"]
-    assert any(msg.get("is_context", False) for msg in history)
+    # 母体不再在会话创建时预加载；context 消息改由每轮按附件动态注入
+    assert all(not msg.get("is_context", False) for msg in history)

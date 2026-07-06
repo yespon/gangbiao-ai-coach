@@ -11,6 +11,8 @@ from app.core.config import get_cors_allow_origin_regex, get_cors_allow_origins,
 from app.core.database import async_session_factory
 from app.core.logger import attach_request_logging_middleware, get_component_logger, setup_logging
 from app.services.cas_service import cleanup_expired_sessions
+from app.services.context_service import preload_master_messages
+from app.services.template_prompt_service import iter_master_entries, validate_master_registry
 
 setup_logging()
 
@@ -36,6 +38,8 @@ async def _session_cleanup_loop():
 async def lifespan(app: FastAPI):
     """Application lifespan: start background tasks, yield, then cancel."""
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
+    validate_master_registry(LOGGER)
+    preload_master_messages(iter_master_entries(), LOGGER)
     yield
     cleanup_task.cancel()
     try:
