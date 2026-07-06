@@ -144,16 +144,27 @@ def _collect_xlsx(
     raw_bytes: bytes,
 ) -> tuple[int, int, list[tuple[int, int, str]]]:
     """Return (rows, cols, non-empty [(row, col, value)]) for the first
-    non-empty worksheet. Merged non-anchor cells read as None and are
-    skipped, so only the merged top-left value appears (no fill).
+    non-empty visible worksheet. Hidden sheets are skipped; merged non-anchor
+    cells read as None and are skipped, so only the merged top-left value
+    appears (no fill). If every visible sheet is empty, fall back to the
+    first worksheet so extraction never silently yields nothing.
     """
     wb = load_workbook(filename=BytesIO(raw_bytes), data_only=False, read_only=False)
 
     sheet = None
     for ws in wb.worksheets:
+        if ws.sheet_state != "visible":
+            continue
         if any(cell.value not in (None, "") for row in ws.iter_rows() for cell in row):
             sheet = ws
             break
+    # No visible sheet has content: fall back to the first non-empty sheet
+    # regardless of visibility so extraction never silently yields nothing.
+    if sheet is None:
+        for ws in wb.worksheets:
+            if any(cell.value not in (None, "") for row in ws.iter_rows() for cell in row):
+                sheet = ws
+                break
     if sheet is None:
         sheet = wb.worksheets[0]
 
@@ -177,10 +188,26 @@ def _collect_xls(
     """Same shape as _collect_xlsx but for legacy .xls via xlrd.
 
     xlrd reads merged non-anchor cells as '' (empty), so only the merged
-    top-left value appears naturally.
+    top-left value appears naturally. Hidden sheets (visibility != 0) are
+    skipped; if no visible sheet has content, fall back to the first sheet.
     """
     book = xlrd.open_workbook(file_contents=raw_bytes)
-    sheet = book.sheets()[0]
+    sheet = None
+    for ws in book.sheets():
+        if getattr(ws, "visibility", 0) != 0:
+            continue
+        if any(ws.cell_value(r, c) not in (None, "") for r in range(ws.nrows) for c in range(ws.ncols)):
+            sheet = ws
+            break
+    # No visible sheet has content: fall back to the first non-empty sheet
+    # regardless of visibility so extraction never silently yields nothing.
+    if sheet is None:
+        for ws in book.sheets():
+            if any(ws.cell_value(r, c) not in (None, "") for r in range(ws.nrows) for c in range(ws.ncols)):
+                sheet = ws
+                break
+    if sheet is None:
+        sheet = book.sheets()[0]
     rows = sheet.nrows
     cols = sheet.ncols
     cells: list[tuple[int, int, str]] = []

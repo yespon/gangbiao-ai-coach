@@ -147,6 +147,47 @@ def test_extract_uses_first_non_empty_worksheet():
     assert "[1,1] 岗位名称" in text
 
 
+def test_extract_skips_hidden_worksheet_picks_next_visible():
+    # A hidden sheet sits first in tab order and is non-empty; extraction
+    # must skip it and use the next visible worksheet's content.
+    wb = Workbook()
+    ws_hidden = wb.active
+    ws_hidden.title = "隐藏草稿"
+    ws_hidden["A1"] = "隐藏内容不应出现"
+    ws_hidden.sheet_state = "hidden"
+
+    ws_visible = wb.create_sheet("正式数据")
+    ws_visible["A1"] = "岗位名称"
+    ws_visible["B1"] = "服务客户"
+
+    buf = BytesIO()
+    wb.save(buf)
+    text = extract_cells_for_classification(buf.getvalue(), ".xlsx")
+    assert "隐藏内容不应出现" not in text
+    assert "[1,1] 岗位名称" in text
+    assert "[1,2] 服务客户" in text
+
+
+def test_extract_skips_hidden_then_falls_back_to_first_sheet():
+    # Degenerate case: only one hidden sheet holds content, all visible
+    # sheets are empty. Don't silently return nothing — fall back to the
+    # hidden sheet so classification still has something to read.
+    wb = Workbook()
+    ws_visible_empty = wb.active
+    ws_visible_empty.title = "空可见"  # empty but visible
+
+    ws_hidden = wb.create_sheet("仅隐藏")
+    ws_hidden["A1"] = "唯一内容"
+    ws_hidden.sheet_state = "hidden"
+
+    buf = BytesIO()
+    wb.save(buf)
+    text = extract_cells_for_classification(buf.getvalue(), ".xlsx")
+    # No visible sheet has content → fallback surfaces the hidden sheet's
+    # content rather than producing an empty extraction.
+    assert "唯一内容" in text
+
+
 @pytest.mark.asyncio
 async def test_classify_text_sends_prompt_and_parses_result(monkeypatch):
     captured = {}

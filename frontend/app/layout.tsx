@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gangbiao Chat",
+  title: "岗标AI教练",
   description: "Next.js frontend for Gangbiao Chatbot API",
   icons: {
     icon: "/favicon.svg",
