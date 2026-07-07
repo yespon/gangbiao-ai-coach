@@ -60,7 +60,7 @@ SID_BASE_URL=https://sid.ruijie.com.cn
 SID_SERVICE_URL=https://gangbiao-ai-coach.ruijie.com.cn/login   # 必须与 SID 白名单完全一致
 SID_LOGOUT_URL=https://sid.ruijie.com.cn/logout
 SESSION_COOKIE_NAME=sid_session
-SESSION_COOKIE_SECURE=true                                 # ⚠️ 生产 HTTPS 必须 true
+SESSION_COOKIE_SECURE=true                                 # ⚠️ 生产 HTTPS 必须 true（测试/本地 HTTP 必须 false，否则登录成功但 Secure cookie 被浏览器丢弃，跳转后弹回登录页）
 SESSION_COOKIE_SAMESITE=Lax                                # 前后端同域用 Lax
 SESSION_TTL_HOURS=8                                        # 对齐 SID TGC 8h
 SESSION_SLIDING_REFRESH_MINUTES=30
@@ -80,6 +80,8 @@ SESSION_CLEANUP_GRACE_DAYS=1
 | 配置 | 本地调试 | 生产 |
 |------|---------|------|
 | `SESSION_COOKIE_SECURE` | `false`（HTTP） | **`true`**（HTTPS） |
+
+> **症状速查**：测试环境用 HTTP 访问却忘了把 `SESSION_COOKIE_SECURE` 设为 `false`（用代码默认值 `true`）时，登录接口返回 200 成功，但 `Set-Cookie` 带 `Secure` 标志，浏览器在 HTTP 下丢弃该 cookie，跳转 `/` 后 `hasSessionHint()` 读不到 `csrf_token` → 立即弹回 `/login`。表现为"点登录后又回到登录页"。修复：测试环境 `.env` 设 `SESSION_COOKIE_SECURE=false` 并重启 backend。
 | `SID_SERVICE_URL` | `http://...:2088/login` | `https://.../login`（标准 443，无端口） |
 | `CORS_ALLOW_ORIGINS` | 含 `:2088` 端口 | HTTPS 域名，无端口 |
 | `AUTH_MODE` | `both` | 过渡期 `both` → 最终 `sso` |
