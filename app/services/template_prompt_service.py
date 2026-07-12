@@ -1,6 +1,6 @@
 """Template master prompt resolution.
 
-Maps a classifier document_id (D1..D7) to the master prompt file under
+Maps a classifier document_id (D1..D9) to the master prompt file under
 MASTER_DIR, and validates the registry at startup. resolve_master() (Task 4)
 orchestrates classification + conflict/intercept logic on top of this.
 """
