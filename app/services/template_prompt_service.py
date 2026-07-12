@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.core.config import MASTER_DIR
 
-_DOCUMENT_IDS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"]
+_DOCUMENT_IDS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9"]
 _GENERIC_KEY = None
 
 # {document_id | None: Path}; None -> generic master. Built by _build_registry().

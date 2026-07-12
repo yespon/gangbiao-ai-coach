@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.services.prompts import template_classifier as CLASSIFIER_PROMPT
 
-_VALID_DOCUMENT_IDS = {"D1", "D2", "D3", "D4", "D5", "D6", "D7"}
+_VALID_DOCUMENT_IDS = {"D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9"}
 
 
 class ClassificationResult(BaseModel):
