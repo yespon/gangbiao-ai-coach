@@ -89,7 +89,7 @@ async def _resolve_master_messages(
 ) -> tuple[list[ChatMessage], str | None]:
     """Resolve the master prompt for this turn. Raises HTTPException(400) on
     intercept or empty-master-load. Returns (master_messages, new_template_id)
-    where new_template_id is the D1..D7 to persist (None for _generic)."""
+    where new_template_id is the D1..D9 to persist (None for _generic)."""
     resolution = await resolve_master(
         user_msg.attachments, BASE_DIR, current_template_id
     )
