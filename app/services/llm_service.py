@@ -54,7 +54,7 @@ async def _call_llm(messages: list[dict[str, str]]) -> str:
         )
 
     url = f"{base_url}/chat/completions"
-    payload = {"model": model, "messages": messages, "temperature": 0.2}
+    payload = {"model": model, "messages": messages}#, "temperature": 0.2}
     headers = {"Authorization": f"Bearer {api_key}"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -85,7 +85,7 @@ async def _call_llm_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]
         return
 
     url = f"{base_url}/chat/completions"
-    payload = {"model": model, "messages": messages, "temperature": 0.2, "stream": True}
+    payload = {"model": model, "messages": messages, "stream": True}#, "temperature": 0.2}
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "text/event-stream"}
 
     async with httpx.AsyncClient(timeout=120.0) as client:

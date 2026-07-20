@@ -250,7 +250,7 @@ async def _call_llm_json(messages: list[dict[str, str]]) -> str:
     model = settings.openai_model
     base_url = settings.openai_base_url.rstrip("/")
     url = f"{base_url}/chat/completions"
-    payload = {"model": model, "messages": messages, "temperature": 0}
+    payload = {"model": model, "messages": messages}#, "temperature": 0}
     headers = {"Authorization": f"Bearer {api_key}"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
