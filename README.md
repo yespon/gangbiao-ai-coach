@@ -117,6 +117,35 @@ uv run pytest tests/contract -q
 uv run pytest -q
 ```
 
+## 并发容量压测
+
+压测脚本与方案文档：
+
+- `scripts/loadtest/chat_capacity.py`
+- `docs/performance/concurrency-capacity-playbook.md`
+
+示例（一次跑三类场景：chat / stream / attachment）：
+
+```bash
+python scripts/loadtest/chat_capacity.py \
+	--base-url http://127.0.0.1:2088/api/v1 \
+	--email loadtest@example.com \
+	--password 'YourPass123!' \
+	--scenario all \
+	--concurrency 20 \
+	--requests 200 \
+	--attachment-path tests/fixtures/classifier/cases/sample.xlsx \
+	--report reports/chat_capacity_report.json
+```
+
+默认门禁：
+
+- chat: p95 <= 8000ms，错误率 <= 1%
+- stream: p95 <= 20000ms，首 token p95 <= 4000ms，错误率 <= 1%
+- attachment: p95 <= 15000ms，错误率 <= 3%
+
+脚本全部通过时退出码为 0；任一场景未达标时退出码为 2。
+
 ## 可选环境变量
 
 - `OPENAI_API_KEY`: OpenAI 或兼容网关 key。
