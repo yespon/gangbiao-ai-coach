@@ -32,4 +32,4 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 
 EXPOSE 2024
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --workers 4 --host 0.0.0.0 --port 2024"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --workers 1 --host 0.0.0.0 --port 2024"]
