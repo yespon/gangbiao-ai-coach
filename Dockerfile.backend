@@ -28,8 +28,8 @@ deps = data.get("project", {}).get("dependencies", [])
 Path("requirements.txt").write_text("\n".join(deps) + "\n", encoding="utf-8")
 PY
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 EXPOSE 2024
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 2024"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --workers 4 --host 0.0.0.0 --port 2024"]
