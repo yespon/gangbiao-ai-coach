@@ -1878,7 +1878,7 @@ textarea {
 
 .admin-conversation-dialog-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.24fr) minmax(0, 0.76fr);
+  grid-template-columns: minmax(220px, 0.20fr) minmax(0, 0.80fr);
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   overflow: hidden;
